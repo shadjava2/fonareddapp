@@ -1,0 +1,15 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle -->
+  <circle cx="256" cy="256" r="240" fill="#10B981" stroke="#059669" stroke-width="8"/>
+
+  <!-- Letter F -->
+  <path d="M180 140 L180 380 L200 380 L200 200 L280 200 L280 180 L200 180 L200 140 Z" fill="white"/>
+
+  <!-- Decorative elements -->
+  <circle cx="320" cy="180" r="20" fill="white" opacity="0.8"/>
+  <circle cx="340" cy="220" r="15" fill="white" opacity="0.6"/>
+  <circle cx="300" cy="320" r="25" fill="white" opacity="0.7"/>
+
+  <!-- Bottom accent -->
+  <rect x="180" y="360" width="120" height="8" fill="white" opacity="0.9" rx="4"/>
+</svg>

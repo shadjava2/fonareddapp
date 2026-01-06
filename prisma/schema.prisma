@@ -1,0 +1,481 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model utilisateurs {
+  id           BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  nom          String   @db.VarChar(50)
+  postnom      String?  @db.VarChar(50)
+  prenom       String?  @db.VarChar(50)
+  username     String   @db.VarChar(30)
+  mot_de_passe String   @db.VarChar(255)
+  mail         String?  @db.VarChar(255)
+  phone        String?  @db.VarChar(255)
+  locked       Boolean
+  fkFonction   BigInt?  @db.UnsignedBigInt
+  fkRole       BigInt?  @db.UnsignedBigInt
+  initPassword Boolean? @default(false)
+  datecreate   DateTime @default(now()) @db.Timestamp(0)
+  dateupdate   DateTime @default(now()) @updatedAt @db.Timestamp(0)
+  usercreateid BigInt?  @db.UnsignedBigInt
+  userupdateid BigInt?  @db.UnsignedBigInt
+
+  // Relations
+  fonction       fonctions?        @relation(fields: [fkFonction], references: [id])
+  role           roles?            @relation(fields: [fkRole], references: [id])
+  droitsServices droits_services[]
+
+  @@index([fkRole, id], map: "fkroleindexuser")
+  @@index([fkFonction], map: "fkfonctionindexuser")
+  @@index([username], map: "userunique")
+  @@map("utilisateurs")
+}
+
+model fonctions {
+  id           BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  nom          String   @db.VarChar(50)
+  description  String   @db.VarChar(100)
+  datecreate   DateTime @default(now()) @db.Timestamp(0)
+  dateupdate   DateTime @default(now()) @updatedAt @db.Timestamp(0)
+  usercreateid BigInt?  @db.UnsignedBigInt
+  userupdateid BigInt?  @db.UnsignedBigInt
+
+  // Relations
+  utilisateurs utilisateurs[]
+
+  @@index([id], map: "index_fonction_unique")
+  @@map("fonctions")
+}
+
+model roles {
+  id           BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  nom          String   @unique(map: "UNIQUEROLE") @db.VarChar(50)
+  description  String?  @db.VarChar(100)
+  datecreate   DateTime @default(now()) @db.Timestamp(0)
+  dateupdate   DateTime @default(now()) @updatedAt @db.Timestamp(0)
+  usercreateid BigInt?  @db.UnsignedBigInt
+  userupdateid BigInt?  @db.UnsignedBigInt
+
+  // Relations
+  utilisateurs     utilisateurs[]
+  rolesPermissions roles_permissions[]
+
+  @@index([id], map: "ndex_role_unique")
+  @@map("roles")
+}
+
+model permissions {
+  id           BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  nom          String   @unique(map: "uniquepermission") @db.VarChar(255)
+  description  String?  @db.VarChar(255)
+  datecreate   DateTime @default(now()) @db.Timestamp(0)
+  dateupdate   DateTime @default(now()) @updatedAt @db.Timestamp(0)
+  usercreateid BigInt?  @db.UnsignedBigInt
+  userupdateid BigInt?  @db.UnsignedBigInt
+
+  // Relations
+  rolesPermissions roles_permissions[]
+
+  @@index([id], map: "index_permission_unique")
+  @@map("permissions")
+}
+
+model services {
+  id           BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  fkSite       BigInt?  @db.UnsignedBigInt
+  designation  String?  @db.LongText
+  datecreate   DateTime @default(now()) @db.Timestamp(0)
+  dateupdate   DateTime @default(now()) @updatedAt @db.Timestamp(0)
+  usercreateid BigInt?  @db.UnsignedBigInt
+  userupdateid BigInt?  @db.UnsignedBigInt
+
+  // Relations
+  site           sites?            @relation(fields: [fkSite], references: [id])
+  droitsServices droits_services[]
+
+  @@index([id, fkSite], map: "index_pharmacie_unique")
+  @@index([fkSite], map: "key_service")
+  @@map("services")
+}
+
+model sites {
+  id           BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  designation  String?  @db.VarChar(100)
+  abbreviation String?  @db.VarChar(20)
+  adresse      String?  @db.VarChar(255)
+  datecreate   DateTime @default(now()) @db.Timestamp(0)
+  dateupdate   DateTime @default(now()) @updatedAt @db.Timestamp(0)
+  usercreateid BigInt?  @db.UnsignedBigInt
+  userupdateid BigInt?  @db.UnsignedBigInt
+
+  // Relations
+  services services[]
+
+  @@index([id], map: "index_unique_code")
+  @@map("sites")
+}
+
+model roles_permissions {
+  id           BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  fkRole       BigInt   @db.UnsignedBigInt
+  fkPermission BigInt   @db.UnsignedBigInt
+  datecreate   DateTime @default(now()) @db.Timestamp(0)
+  dateupdate   DateTime @default(now()) @updatedAt @db.Timestamp(0)
+  usercreateid BigInt?  @db.UnsignedBigInt
+  userupdateid BigInt?  @db.UnsignedBigInt
+
+  // Relations
+  role       roles       @relation(fields: [fkRole], references: [id])
+  permission permissions @relation(fields: [fkPermission], references: [id])
+
+  @@index([fkRole], map: "fk_key_role")
+  @@index([fkPermission], map: "fk_permis")
+  @@index([id, fkRole, fkPermission], map: "index_roleperimis_unique")
+  @@map("roles_permissions")
+}
+
+model droits_services {
+  id            BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  fkUtilisateur BigInt?  @db.UnsignedBigInt
+  fkService     BigInt?  @db.UnsignedBigInt
+  datecreate    DateTime @default(now()) @db.Timestamp(0)
+  usercreateid  BigInt?
+
+  // Relations
+  utilisateur utilisateurs? @relation(fields: [fkUtilisateur], references: [id])
+  service     services?     @relation(fields: [fkService], references: [id])
+
+  @@index([fkService], map: "fkservice_key")
+  @@index([fkUtilisateur, fkService, id], map: "index_droitpharmacie_unique")
+  @@map("droits_services")
+}
+
+model calendrier {
+  id           BigInt   @id @default(autoincrement())
+  d            DateTime @db.Date
+  label        String?  @db.VarChar(120)
+  datecreate   DateTime @default(now()) @db.Timestamp(0)
+  dateupdate   DateTime @default(now()) @updatedAt @db.Timestamp(0)
+  usercreateid BigInt?
+  userupdateid BigInt?
+
+  @@map("calendrier")
+}
+
+model congeconfig {
+  id           BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  nbjourMois   Float    @unique(map: "UNIQUEROLE") @db.Float
+  datecreate   DateTime @default(now()) @db.Timestamp(0)
+  dateupdate   DateTime @default(now()) @updatedAt @db.Timestamp(0)
+  usercreateid BigInt?  @db.UnsignedBigInt
+  userupdateid BigInt?  @db.UnsignedBigInt
+
+  @@index([id], map: "ndex_role_unique")
+  @@map("congeconfig")
+}
+
+model congedemande {
+  id              BigInt               @id @default(autoincrement())
+  fkSoldes        String?              @db.VarChar(255)
+  fkTypeConge     BigInt?
+  section         String?              @db.VarChar(255)
+  remiseetreprise String?              @db.Text
+  nbrjour         Float?               @db.Float
+  soldeconge      Float?               @db.Float
+  du              DateTime?            @db.Date
+  au              DateTime?            @db.Date
+  statut          congedemande_statut? @default(BROUILLON)
+  niveau          Int?                 @default(0)
+  demandeur       String?              @db.VarChar(255)
+  idremplacant    BigInt?
+  nomsremplacant  String?              @db.VarChar(255)
+  datecreate      DateTime             @default(now()) @db.Timestamp(0)
+  dateupdate      DateTime?            @default(now()) @updatedAt @db.Timestamp(0)
+  usercreateid    BigInt?
+  userupdateid    BigInt?
+
+  @@map("congedemande")
+}
+
+model congesolde {
+  id            BigInt    @id @default(autoincrement())
+  fkUtilisateur BigInt?
+  solde         Float?    @db.Float
+  soldeConsomme Float?    @db.Float
+  datecreate    DateTime  @default(now()) @db.Timestamp(0)
+  dateupdate    DateTime? @default(now()) @updatedAt @db.Timestamp(0)
+  usercreateid  BigInt?
+  userupdateid  BigInt?
+
+  @@map("congesolde")
+}
+
+model retourconge {
+  id           BigInt    @id @default(autoincrement())
+  fkDemande    BigInt?
+  fkSoldes     BigInt?
+  observations String?   @db.Text
+  nbrjour      Int?      @db.TinyInt
+  datecreate   DateTime  @default(now()) @db.Timestamp(0)
+  dateupdate   DateTime? @default(now()) @updatedAt @db.Timestamp(0)
+  usercreateid BigInt?
+  userupdateid BigInt?
+
+  @@map("retourconge")
+}
+
+model urgenceindisponibilites {
+  id             BigInt                          @id @default(autoincrement())
+  fkUtilisateur1 BigInt? // Agent indisponible
+  fkUtilisateur2 BigInt? // Remplaçant pendant la période d'urgence
+  observations   String?                         @db.Text
+  du             DateTime?                       @db.Date
+  au             DateTime?                       @db.Date
+  statut         urgenceindisponibilites_statut?
+  datecreate     DateTime                        @default(now()) @db.Timestamp(0)
+  dateupdate     DateTime?                       @default(now()) @updatedAt @db.Timestamp(0)
+  usercreateid   BigInt?
+  userupdateid   BigInt?
+
+  @@map("urgenceindisponibilites")
+}
+
+model notifications {
+  id                   BigInt                          @id @default(autoincrement()) @db.UnsignedBigInt
+  fkUtilisateur        BigInt?                         @db.UnsignedBigInt
+  type_notification    notifications_type_notification
+  statut               notifications_statut?           @default(en_attente)
+  sujet                String?                         @db.VarChar(255)
+  contenu              String?                         @db.Text
+  adresse_destinataire String                          @db.VarChar(255)
+  date_programmee      DateTime                        @default(now()) @db.Timestamp(0)
+  date_envoi           DateTime                        @default(now()) @db.Timestamp(0)
+  datecreate           DateTime                        @default(now()) @db.Timestamp(0)
+  dateupdate           DateTime                        @default(now()) @updatedAt @db.Timestamp(0)
+  usercreateid         BigInt?
+  userupdateid         BigInt?
+
+  @@index([fkUtilisateur], map: "index_notif_unique")
+  @@map("notifications")
+}
+
+model congephase {
+  id            BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  designation   String?  @db.VarChar(255)
+  ordrephase    Boolean?
+  conformefiled Boolean?
+  datecreate    DateTime @default(now()) @db.Timestamp(0)
+  dateupdate    DateTime @default(now()) @db.Timestamp(0)
+  usercreateid  BigInt?
+  userupdateid  BigInt?
+}
+
+model congetraitements {
+  id           BigInt    @id @default(autoincrement())
+  fkDemande    BigInt?   @default(0)
+  fkPhase      BigInt?   @default(0)
+  observations String?   @db.Text
+  conformite   Boolean?
+  approbation  Boolean?
+  datecreate   DateTime  @default(now()) @db.Timestamp(0)
+  dateupdate   DateTime? @default(now()) @db.Timestamp(0)
+  usercreateid BigInt?
+  userupdateid BigInt?
+}
+
+model congetypes {
+  id           BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  nom          String   @unique(map: "UNIQUEROLE") @db.VarChar(50)
+  description  String?  @db.VarChar(100)
+  datecreate   DateTime @default(now()) @db.Timestamp(0)
+  dateupdate   DateTime @default(now()) @db.Timestamp(0)
+  usercreateid BigInt?  @db.UnsignedBigInt
+  userupdateid BigInt?  @db.UnsignedBigInt
+
+  @@index([id], map: "ndex_role_unique")
+}
+
+model acs_cards {
+  id          BigInt  @id @default(autoincrement())
+  device_ip   String  @db.VarChar(64)
+  employee_no String  @db.VarChar(64)
+  card_no     String  @db.VarChar(64)
+  status      String? @db.VarChar(32)
+  raw         Json
+
+  @@unique([device_ip, card_no], map: "uniq_device_card")
+  @@index([employee_no], map: "idx_employee")
+}
+
+model acs_events {
+  id          BigInt   @id @default(autoincrement())
+  device_ip   String   @db.VarChar(64)
+  event_index BigInt
+  event_time  DateTime
+  event_type  String   @db.VarChar(64)
+  door_no     Int?
+  direction   String?  @db.VarChar(16)
+  card_no     String?  @db.VarChar(64)
+  employee_no String?  @db.VarChar(64)
+  raw         Json
+
+  @@unique([device_ip, event_index], map: "uniq_device_event")
+  @@index([card_no], map: "idx_card")
+  @@index([employee_no], map: "idx_employee")
+  @@index([event_time], map: "idx_time")
+}
+
+model acs_users {
+  id          BigInt  @id @default(autoincrement())
+  device_ip   String  @db.VarChar(64)
+  employee_no String  @db.VarChar(64)
+  name        String?
+  department  String?
+  raw         Json
+
+  @@unique([device_ip, employee_no], map: "uniq_device_employee")
+  @@index([name], map: "idx_name")
+}
+
+model ad_item {
+  id               BigInt               @id @default(autoincrement()) @db.UnsignedBigInt
+  slot_code        String               @db.VarChar(64)
+  lang             String?              @default("fr") @db.VarChar(8)
+  title            String               @db.VarChar(180)
+  subtitle         String?              @db.VarChar(240)
+  content_html     String?              @db.MediumText
+  cta_label        String?              @db.VarChar(80)
+  cta_url          String?              @db.VarChar(500)
+  media_type       ad_item_media_type?  @default(image)
+  hero_image_url   String?              @db.VarChar(500)
+  start_at         DateTime             @default(now()) @db.DateTime(0)
+  end_at           DateTime?            @db.DateTime(0)
+  days_mask        String?
+  start_time       DateTime?            @db.Time(0)
+  end_time         DateTime?            @db.Time(0)
+  status           ad_item_status?      @default(draft)
+  priority         Int?                 @default(5) @db.UnsignedTinyInt
+  weight           Int?                 @default(1) @db.UnsignedTinyInt
+  loop_seconds     Int?                 @default(8) @db.UnsignedInt
+  orientation      ad_item_orientation? @default(auto)
+  animation_preset String?              @db.VarChar(64)
+  bg_color         String?              @db.VarChar(16)
+  text_color       String?              @db.VarChar(16)
+  theme            ad_item_theme?       @default(auto)
+  impressions      BigInt               @default(0) @db.UnsignedBigInt
+  clicks           BigInt               @default(0) @db.UnsignedBigInt
+  max_impressions  BigInt?              @db.UnsignedBigInt
+  created_by       BigInt?              @db.UnsignedBigInt
+  updated_by       BigInt?              @db.UnsignedBigInt
+  created_at       DateTime             @default(now()) @db.DateTime(0)
+  updated_at       DateTime             @default(now()) @db.DateTime(0)
+  published_at     DateTime?            @db.DateTime(0)
+  ad_slot          ad_slot              @relation(fields: [slot_code], references: [code], map: "fk_ad_item_slot")
+  ad_media         ad_media[]
+
+  @@index([lang], map: "idx_lang")
+  @@index([priority, weight], map: "idx_priority_weight")
+  @@index([slot_code, status, start_at, end_at], map: "idx_slot_status_time")
+}
+
+model ad_media {
+  id         BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  ad_item_id BigInt   @db.UnsignedBigInt
+  url        String   @db.VarChar(500)
+  alt_text   String?  @db.VarChar(160)
+  position   Int      @default(1) @db.UnsignedSmallInt
+  width      Int?
+  height     Int?
+  mime_type  String?  @db.VarChar(100)
+  created_at DateTime @default(now()) @db.DateTime(0)
+  ad_item    ad_item  @relation(fields: [ad_item_id], references: [id], onDelete: Cascade, map: "fk_ad_media_item")
+
+  @@index([ad_item_id, position], map: "idx_media_item_pos")
+}
+
+model ad_slot {
+  code              String                     @id @db.VarChar(64)
+  description       String                     @db.VarChar(255)
+  device            ad_slot_device?            @default(any)
+  max_items         Int?                       @default(10) @db.UnsignedTinyInt
+  rotation_strategy ad_slot_rotation_strategy? @default(weight)
+  width_px          Int?
+  height_px         Int?
+  created_at        DateTime                   @default(now()) @db.DateTime(0)
+  updated_at        DateTime                   @default(now()) @db.DateTime(0)
+  ad_item           ad_item[]
+}
+
+enum notifications_type_notification {
+  email
+  sms
+}
+
+enum notifications_statut {
+  en_attente @map("en attente")
+  envoy_e    @map("envoyée")
+  chou_e     @map("échouée")
+}
+
+enum congedemande_statut {
+  BROUILLON
+  EN_ATTENTE
+  EN_COURS
+  A_VALIDER
+  A_APPROUVER
+  APPROUVEE
+  REFUSEE
+  ANNULEE
+}
+
+enum urgenceindisponibilites_statut {
+  indisponible
+  disponible
+}
+
+enum ad_slot_device {
+  any
+  desktop
+  mobile
+}
+
+enum ad_slot_rotation_strategy {
+  weight
+  priority
+  random
+  sequential
+}
+
+enum ad_item_media_type {
+  none
+  image
+  gallery
+  video
+  html
+}
+
+enum ad_item_status {
+  draft
+  scheduled
+  published
+  paused
+  archived
+}
+
+enum ad_item_orientation {
+  auto
+  vertical
+  horizontal
+}
+
+enum ad_item_theme {
+  auto
+  light
+  dark
+  brand
+}

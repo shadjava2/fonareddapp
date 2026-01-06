@@ -1,0 +1,62 @@
+# Dockerfile pour build Electron (Linux uniquement)
+FROM node:18-alpine AS electron-build
+
+WORKDIR /app
+
+# Installer les dépendances système pour Electron
+RUN apk add --no-cache \
+    chromium \
+    nss \
+    freetype \
+    freetype-dev \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont \
+    xvfb \
+    dbus \
+    gtk+3.0 \
+    libxss1 \
+    libgconf-2-4
+
+# Copier les fichiers de configuration
+COPY package*.json ./
+COPY tsconfig.json ./
+COPY tailwind.config.js ./
+COPY postcss.config.js ./
+COPY next.config.js ./
+COPY electron-builder.yml ./
+
+# Installer les dépendances
+RUN npm ci
+
+# Copier le code source
+COPY src/ ./src/
+COPY public/ ./public/
+COPY prisma/ ./prisma/
+COPY electron/ ./electron/
+
+# Générer le client Prisma
+RUN npx prisma generate
+
+# Build de l'application
+RUN npm run build
+
+# Build de l'exécutable Electron
+RUN npm run dist
+
+# Stage final: Extraction des artefacts
+FROM alpine:latest AS final
+
+WORKDIR /app
+
+# Installer les outils nécessaires
+RUN apk add --no-cache bash
+
+# Copier les exécutables générés
+COPY --from=electron-build /app/dist-electron ./
+
+# Script pour lancer l'application
+COPY docker/entrypoint.sh ./
+RUN chmod +x entrypoint.sh
+
+CMD ["./entrypoint.sh"]

@@ -1,0 +1,37 @@
+# Dockerfile pour le développement
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Installer les outils système nécessaires
+RUN apk add --no-cache git
+
+# Copier les fichiers de configuration
+COPY package*.json ./
+
+# Installer toutes les dépendances (dev + prod) avec retry
+RUN npm install --retry=3 --retry-delay=1000 || \
+    (npm cache clean --force && npm install --retry=3 --retry-delay=1000)
+
+# Copier le code source
+COPY . .
+
+# Générer le client Prisma
+RUN npx prisma generate
+
+# Créer un utilisateur non-root
+RUN addgroup -g 1001 -S nodejs
+RUN adduser -S nextjs -u 1001
+
+# Changer les permissions
+RUN chown -R nextjs:nodejs /app
+USER nextjs
+
+# Exposer le port
+EXPOSE 3000
+
+# Variables d'environnement pour le développement
+ENV NODE_ENV=development
+
+# Script de démarrage en mode développement
+CMD ["npm", "run", "dev"]
