@@ -8,10 +8,7 @@
 # 1. Se connecter au serveur
 ssh ubuntu@91.134.44.14
 
-# 2. Télécharger le script de déploiement
-wget https://raw.githubusercontent.com/shadjava2/fonaredd/main/deploy-ubuntu.sh
-
-# Ou cloner le dépôt
+# 2. Cloner le dépôt (OBLIGATOIRE - ne pas utiliser wget)
 git clone https://github.com/shadjava2/fonaredd.git
 cd fonaredd
 
@@ -22,7 +19,10 @@ chmod +x deploy-ubuntu.sh
 ./deploy-ubuntu.sh
 ```
 
+**⚠️ Important :** Ne pas utiliser `wget` pour télécharger le script seul. Cloner le dépôt entier est nécessaire car le script a besoin de tous les fichiers du projet.
+
 Le script va automatiquement :
+
 - ✅ Vérifier et installer les prérequis (Node.js, Git, PM2)
 - ✅ Cloner le dépôt
 - ✅ Créer le fichier `.env.local` avec votre DATABASE_URL
@@ -65,6 +65,7 @@ nano .env.local
 ```
 
 Ajoutez dans `.env.local` :
+
 ```env
 DATABASE_URL="mysql://giformapp:SDconceptsrdc243_243@91.134.44.14:3306/fonaredd-app?allowPublicKeyRetrieval=true&ssl=false&connectTimeout=10000"
 JWT_SECRET="$(openssl rand -base64 32)"
