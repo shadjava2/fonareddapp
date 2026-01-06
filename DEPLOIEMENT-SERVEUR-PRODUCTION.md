@@ -55,16 +55,17 @@ Cette commande génère le client Prisma pour se connecter à MySQL.
 Ouvrez le fichier `.env.local` dans `C:\prodfonaredd` et vérifiez :
 
 ```env
-DATABASE_URL="mysql://shad:SDconceptsrdc@243@localhost:32768/fonaredd-app"
+DATABASE_URL="mysql://username:password@host:3306/database_name?allowPublicKeyRetrieval=true&ssl=false&connectTimeout=10000"
 PORT=3001
 NEXTAUTH_URL="http://localhost:3001"
 NODE_ENV="production"
 ```
 
 **Important :**
+- Remplacez `username`, `password`, `host`, et `database_name` par vos propres valeurs
 - Vérifiez que `DATABASE_URL` correspond à votre configuration MySQL
-- Vérifiez que le port MySQL (32768) est correct
-- Vérifiez que le nom de la base de données (`fonaredd-app`) est correct
+- Vérifiez que le port MySQL est correct
+- Vérifiez que le nom de la base de données est correct
 
 ### 4.2 Vérifier que MySQL est démarré
 

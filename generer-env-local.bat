@@ -22,7 +22,7 @@ echo.
 (
 echo # Configuration pour la production
 echo # Base de donnees MySQL ^(meme configuration que la machine de developpement^)
-echo DATABASE_URL="mysql://shad:SDconceptsrdc@243@localhost:32768/fonaredd-app"
+echo DATABASE_URL="mysql://username:password@host:3306/database_name?allowPublicKeyRetrieval=true^&ssl=false^&connectTimeout=10000"
 echo.
 echo # Cles secretes pour JWT et NextAuth
 echo # IMPORTANT: Changez ces cles en production pour plus de securite
@@ -40,7 +40,7 @@ echo PORT=3001
 echo ✓ Fichier .env.local cree avec succes
 echo.
 echo Configuration:
-echo   - DATABASE_URL: MySQL sur localhost:32768
+echo   - DATABASE_URL: MySQL (remplacez par vos propres identifiants)
 echo   - PORT: 3001
 echo   - NODE_ENV: production
 echo   - NEXTAUTH_URL: http://localhost:3001
