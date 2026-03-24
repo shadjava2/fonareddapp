@@ -45,6 +45,7 @@ services:
 
   # Application Next.js (production)
   app-prod:
+    image: fonaredd-app-prod:latest
     build:
       context: .
       dockerfile: Dockerfile
