@@ -1,4 +1,5 @@
 import { HikvisionDigestService } from '@/lib/hikvision-digest';
+import { prisma } from '@/lib/prisma';
 import { NextApiRequest, NextApiResponse } from 'next';
 import { getHikvisionConfig } from './config';
 
@@ -87,7 +88,7 @@ export default async function handler(
 }
 
 async function checkDeviceConnectivity(): Promise<HikvisionDeviceInfo> {
-  const config = getHikvisionConfig();
+  const config = await getHikvisionConfig();
 
   try {
     console.log(
@@ -101,6 +102,7 @@ async function checkDeviceConnectivity(): Promise<HikvisionDeviceInfo> {
       password: config.password,
       port: config.port,
       useHttps: false,
+      timezone_offset_minutes: config.timezone_offset_minutes ?? undefined,
     });
 
     // Tester la connectivité avec DIGEST
@@ -111,40 +113,44 @@ async function checkDeviceConnectivity(): Promise<HikvisionDeviceInfo> {
 
       // Essayer de récupérer les informations du dispositif
       try {
-        const deviceInfo = await digestService.getDeviceInfo();
+        await digestService.getDeviceInfo();
         console.log('✅ Informations du dispositif récupérées');
-
-        return {
-          device_ip: config.ip,
-          device_name: 'Lecteur Hikvision',
-          status: 'online',
-          last_sync: new Date().toISOString(),
-          events_count: 0,
-          users_count: 0,
-        };
-      } catch (infoError) {
+      } catch {
         console.log('⚠️ Connectivité OK mais informations non accessibles');
-        return {
-          device_ip: config.ip,
-          device_name: 'Lecteur Hikvision',
-          status: 'online',
-          last_sync: new Date().toISOString(),
-          events_count: 0,
-          users_count: 0,
-        };
       }
+
+      const [events_count, users_count] = await Promise.all([
+        prisma.acs_events.count({ where: { device_ip: config.ip } }),
+        prisma.acs_users.count({ where: { device_ip: config.ip } }),
+      ]);
+
+      return {
+        device_ip: config.ip,
+        device_name: 'Lecteur Hikvision',
+        status: 'online',
+        last_sync: new Date().toISOString(),
+        events_count,
+        users_count,
+      };
     } else {
       throw new Error('Authentification DIGEST échouée');
     }
   } catch (error) {
     console.error('❌ Lecteur Hikvision non accessible:', error);
+    const config = await getHikvisionConfig().catch(() => null);
+    const [events_count, users_count] = config
+      ? await Promise.all([
+          prisma.acs_events.count({ where: { device_ip: config.ip } }),
+          prisma.acs_users.count({ where: { device_ip: config.ip } }),
+        ])
+      : [0, 0];
     return {
-      device_ip: config.ip,
+      device_ip: config?.ip ?? '?',
       device_name: 'Lecteur Hikvision',
       status: 'offline',
       last_sync: new Date().toISOString(),
-      events_count: 0,
-      users_count: 0,
+      events_count,
+      users_count,
     };
   }
 }

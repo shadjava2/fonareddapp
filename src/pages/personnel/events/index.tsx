@@ -2,6 +2,7 @@ import PersonnelLayout from '@/components/layout/PersonnelLayout';
 import Pagination from '@/components/ui/Pagination';
 import SearchBar from '@/components/ui/SearchBar';
 import { useToast } from '@/hooks/useToast';
+import { formatDateFR, formatDateTimeFR } from '@/lib/formatDate';
 import { apiGet } from '@/lib/fetcher';
 import { ArrowPathIcon, ClockIcon } from '@heroicons/react/24/outline';
 import { useEffect, useState } from 'react';
@@ -29,6 +30,8 @@ const EventsPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   useEffect(() => {
     fetchEvents();
@@ -37,16 +40,21 @@ const EventsPage: React.FC = () => {
   const fetchEvents = async (
     page = currentPage,
     limit = itemsPerPage,
-    search = searchQuery
+    search = searchQuery,
+    period?: { start: string; end: string }
   ) => {
     try {
       setLoading(true);
-      console.log('🔍 Chargement des événements...', { page, limit, search });
+      const start = period?.start ?? startDate;
+      const end = period?.end ?? endDate;
+      console.log('🔍 Chargement des événements...', { page, limit, search, start, end });
 
       const params = new URLSearchParams({
         page: page.toString(),
         limit: limit.toString(),
         ...(search && { employee_no: search }),
+        ...(start && { startTime: new Date(start + 'T00:00:00.000Z').toISOString() }),
+        ...(end && { endTime: new Date(end + 'T23:59:59.999Z').toISOString() }),
       });
 
       const response = await apiGet<{
@@ -97,41 +105,59 @@ const EventsPage: React.FC = () => {
     fetchEvents(1, itemsPerPage, query);
   };
 
+  const handleApplyPeriod = () => {
+    setCurrentPage(1);
+    fetchEvents(1, itemsPerPage, searchQuery, (startDate || endDate) ? { start: startDate, end: endDate } : undefined);
+  };
+
+  const handleClearPeriod = () => {
+    setStartDate('');
+    setEndDate('');
+    setCurrentPage(1);
+    fetchEvents(1, itemsPerPage, searchQuery);
+  };
+
   const handleSync = async () => {
     try {
       setSyncing(true);
       console.log('🔄 Synchronisation des événements depuis Hikvision...');
 
-      const response = await fetch('/api/hikvision/ingest');
+      const params = new URLSearchParams();
+      if (startDate) {
+        params.set('startTime', new Date(startDate + 'T00:00:00.000Z').toISOString());
+      }
+      if (endDate) {
+        params.set('endTime', new Date(endDate + 'T23:59:59.999Z').toISOString());
+      }
+      const url = params.toString() ? `/api/hikvision/ingest?${params.toString()}` : '/api/hikvision/ingest';
+      const response = await fetch(url);
       const data = await response.json();
 
       if (data.ok) {
         showSuccess(
           `${data.inserted || 0} événement(s) synchronisé(s) depuis Hikvision`
         );
-        // Recharger les événements après synchronisation
         await fetchEvents();
       } else {
-        showError(data.error || 'Erreur lors de la synchronisation');
+        if (data.code === 'DEVICE_UNSUPPORTED') {
+          showError(
+            "Cet appareil ne supporte pas la synchronisation des événements. Les données affichées sont celles déjà en base."
+          );
+        } else {
+          showError(data.error || 'Erreur lors de la synchronisation');
+        }
       }
     } catch (error: any) {
       console.error('❌ Erreur lors de la synchronisation:', error);
-      showError(error.message || 'Erreur lors de la synchronisation');
+      showError(
+        "Erreur lors de la synchronisation. Si vous utilisez un lecteur DS-K1T, cet appareil ne supporte pas l'API événements."
+      );
     } finally {
       setSyncing(false);
     }
   };
 
-  const formatEventTime = (eventTime: string) => {
-    return new Date(eventTime).toLocaleString('fr-FR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
-  };
+  const formatEventTime = (eventTime: string) => formatDateTimeFR(eventTime);
 
   const getEventTypeLabel = (eventType: string) => {
     const labels: { [key: string]: string } = {
@@ -186,31 +212,41 @@ const EventsPage: React.FC = () => {
                 </p>
               </div>
             </div>
-            <div className="flex space-x-2">
-              <button
-                onClick={handleSync}
-                disabled={syncing}
-                className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition duration-200 disabled:opacity-50"
-              >
-                <ArrowPathIcon
-                  className={`h-5 w-5 mr-2 ${syncing ? 'animate-spin' : ''}`}
-                />
-                {syncing
-                  ? 'Synchronisation...'
-                  : 'Synchroniser depuis Hikvision'}
-              </button>
-              <button
-                onClick={() => fetchEvents()}
-                disabled={loading}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-200 disabled:opacity-50"
-              >
-                Actualiser
-              </button>
+            <div className="flex flex-col items-end gap-1">
+              {startDate || endDate ? (
+                <p className="text-xs text-gray-500">
+                  La synchro utilisera la période : {startDate ? formatDateFR(startDate + 'T12:00:00') : '…'} → {endDate ? formatDateFR(endDate + 'T12:00:00') : '…'}
+                </p>
+              ) : null}
+              <div className="flex space-x-2">
+                <button
+                  onClick={handleSync}
+                  disabled={syncing}
+                  className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition duration-200 disabled:opacity-50"
+                  title={startDate || endDate ? 'Synchroniser uniquement la période choisie (Du / Au)' : 'Synchroniser les nouveaux événements depuis le lecteur'}
+                >
+                  <ArrowPathIcon
+                    className={`h-5 w-5 mr-2 ${syncing ? 'animate-spin' : ''}`}
+                  />
+                  {syncing
+                    ? 'Synchronisation...'
+                    : (startDate || endDate)
+                      ? 'Synchroniser la période choisie'
+                      : 'Synchroniser depuis Hikvision'}
+                </button>
+                <button
+                  onClick={() => fetchEvents()}
+                  disabled={loading}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-200 disabled:opacity-50"
+                >
+                  Actualiser
+                </button>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Barre de recherche */}
+        {/* Période et recherche */}
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-medium text-gray-900">
@@ -223,6 +259,56 @@ const EventsPage: React.FC = () => {
               Actualiser
             </button>
           </div>
+
+          {/* Choix de la période */}
+          <div className="mb-4 p-4 bg-gray-50 rounded-lg">
+            <h4 className="text-sm font-medium text-gray-700 mb-3">Période</h4>
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <label htmlFor="startDate" className="block text-xs font-medium text-gray-500 mb-1">
+                  Du
+                </label>
+                <input
+                  id="startDate"
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label htmlFor="endDate" className="block text-xs font-medium text-gray-500 mb-1">
+                  Au
+                </label>
+                <input
+                  id="endDate"
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleApplyPeriod}
+                disabled={loading}
+                className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Appliquer
+              </button>
+              <button
+                type="button"
+                onClick={handleClearPeriod}
+                className="px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-md hover:bg-gray-50"
+              >
+                Toute la période
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-gray-500">
+              Filtrer les événements par date. Sans période, tous les événements sont affichés.
+            </p>
+          </div>
+
           <SearchBar
             onSearch={handleSearch}
             placeholder="Rechercher par numéro d'employé..."

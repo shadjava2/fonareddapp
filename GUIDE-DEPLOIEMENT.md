@@ -24,7 +24,7 @@ npm run dev
 
 ### 🔧 CONFIGURATION ACTUELLE
 
-- **Base de données** : Configurez votre `DATABASE_URL` dans `.env.local`
+- **Base de données** : `mysql://shad:SDconceptsrdc@243@localhost:32768/fonaredd-app`
 - **Port** : 3000
 - **Mode** : Développement (prêt pour production)
 

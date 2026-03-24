@@ -17,7 +17,7 @@ export default async function handler(
     try {
       console.log('🔍 Récupération des utilisateurs ACS...');
 
-      const { page = 1, limit = 50, device_ip, employee_no } = req.query;
+      const { page = 1, limit = 50, device_ip, employee_no, name: nameSearch, search } = req.query;
 
       const whereClause: any = {};
 
@@ -25,8 +25,16 @@ export default async function handler(
         whereClause.device_ip = device_ip;
       }
 
-      if (employee_no) {
-        whereClause.employee_no = employee_no;
+      const searchStr = (search && String(search).trim()) || (employee_no && String(employee_no).trim());
+      if (searchStr) {
+        whereClause.OR = [
+          { employee_no: { contains: searchStr } },
+          { name: { contains: searchStr } },
+        ];
+      } else if (employee_no) {
+        whereClause.employee_no = { contains: String(employee_no) };
+      } else if (nameSearch && String(nameSearch).trim()) {
+        whereClause.name = { contains: String(nameSearch).trim() };
       }
 
       const skip = (Number(page) - 1) * Number(limit);
@@ -49,14 +57,26 @@ export default async function handler(
         `🔍 ${users.length} utilisateurs ACS trouvés sur ${total} total`
       );
 
-      const formattedUsers = users.map((user) => ({
-        id: user.id.toString(),
-        device_ip: user.device_ip,
-        employee_no: user.employee_no,
-        name: user.name,
-        department: user.department,
-        raw: user.raw,
-      }));
+      const formattedUsers = users.map((user) => {
+        const raw = (user.raw as Record<string, unknown>) || {};
+        const nameFromRaw =
+          (raw.personName ?? raw.name ?? raw.employeeName ?? raw.Name) as string | undefined;
+        const name = (user.name ?? (nameFromRaw && String(nameFromRaw).trim())) || null;
+        const departmentFromRaw =
+          (raw.department ?? raw.deptName ?? raw.departmentName) as string | undefined;
+        const department =
+          (user.department && String(user.department).trim()) ||
+          (departmentFromRaw && String(departmentFromRaw).trim()) ||
+          null;
+        return {
+          id: user.id.toString(),
+          device_ip: user.device_ip,
+          employee_no: user.employee_no,
+          name: name || undefined,
+          department: department || undefined,
+          raw: user.raw,
+        };
+      });
 
       return res.status(200).json({
         success: true,

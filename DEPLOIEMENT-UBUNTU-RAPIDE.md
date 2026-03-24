@@ -8,7 +8,10 @@
 # 1. Se connecter au serveur
 ssh ubuntu@91.134.44.14
 
-# 2. Cloner le dépôt (OBLIGATOIRE - ne pas utiliser wget)
+# 2. Télécharger le script de déploiement
+wget https://raw.githubusercontent.com/shadjava2/fonaredd/main/deploy-ubuntu.sh
+
+# Ou cloner le dépôt
 git clone https://github.com/shadjava2/fonaredd.git
 cd fonaredd
 
@@ -18,8 +21,6 @@ chmod +x deploy-ubuntu.sh
 # 4. Exécuter le script
 ./deploy-ubuntu.sh
 ```
-
-**⚠️ Important :** Ne pas utiliser `wget` pour télécharger le script seul. Cloner le dépôt entier est nécessaire car le script a besoin de tous les fichiers du projet.
 
 Le script va automatiquement :
 

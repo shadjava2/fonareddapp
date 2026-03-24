@@ -1,4 +1,6 @@
 import {
+  BuildingOffice2Icon,
+  ChartBarIcon,
   ClockIcon,
   Cog6ToothIcon,
   HomeIcon,
@@ -21,16 +23,28 @@ const PersonnelSidebar: React.FC = () => {
       current: router.pathname === '/personnel',
     },
     {
-      name: 'Événements',
+      name: 'Pointages',
       href: '/personnel/events',
       icon: ClockIcon,
       current: router.pathname === '/personnel/events',
     },
     {
-      name: 'Utilisateurs ACS',
+      name: 'Rapports',
+      href: '/personnel/reports',
+      icon: ChartBarIcon,
+      current: router.pathname === '/personnel/reports',
+    },
+    {
+      name: 'Agents enregistrés sur le lecteur',
       href: '/personnel/users',
       icon: UserGroupIcon,
       current: router.pathname === '/personnel/users',
+    },
+    {
+      name: 'Gestion des services',
+      href: '/personnel/departments',
+      icon: BuildingOffice2Icon,
+      current: router.pathname === '/personnel/departments',
     },
     {
       name: 'Monitoring',

@@ -21,7 +21,7 @@ export default async function handler(
     try {
       console.log('🔍 Récupération des événements Hikvision...');
 
-      const { page = 1, limit = 50, device_ip, employee_no } = req.query;
+      const { page = 1, limit = 50, device_ip, employee_no, startTime, endTime } = req.query;
 
       const whereClause: any = {};
 
@@ -31,6 +31,16 @@ export default async function handler(
 
       if (employee_no) {
         whereClause.employee_no = employee_no;
+      }
+
+      if (startTime || endTime) {
+        whereClause.event_time = {};
+        if (startTime) {
+          whereClause.event_time.gte = new Date(startTime as string);
+        }
+        if (endTime) {
+          whereClause.event_time.lte = new Date(endTime as string);
+        }
       }
 
       const skip = (Number(page) - 1) * Number(limit);

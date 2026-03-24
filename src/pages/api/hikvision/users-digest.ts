@@ -10,7 +10,7 @@ export default async function handler(
     try {
       console.log('🔍 Récupération des utilisateurs avec DIGEST...');
 
-      const config = getHikvisionConfig();
+      const config = await getHikvisionConfig();
 
       // Créer le service DIGEST
       const digestService = new HikvisionDigestService({
@@ -19,6 +19,7 @@ export default async function handler(
         password: config.password,
         port: config.port,
         useHttps: false,
+        timezone_offset_minutes: config.timezone_offset_minutes ?? undefined,
       });
 
       // Récupérer les utilisateurs

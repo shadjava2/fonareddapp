@@ -10,8 +10,8 @@ export default async function handler(
     try {
       console.log('🔍 Récupération des événements réels via interface web...');
 
-      const config = getHikvisionConfig();
-      
+      const config = await getHikvisionConfig();
+
       // Créer le service DIGEST
       const digestService = new HikvisionDigestService({
         ip: config.ip,
@@ -19,6 +19,7 @@ export default async function handler(
         password: config.password,
         port: config.port,
         useHttps: false,
+        timezone_offset_minutes: config.timezone_offset_minutes ?? undefined,
       });
 
       // Essayer différentes approches pour récupérer les événements
@@ -107,13 +108,13 @@ export default async function handler(
       for (const approach of approaches) {
         try {
           console.log(`🔍 Test: ${approach.name}`);
-          
+
           const data = await approach.method();
-          
+
           // Analyser les données pour extraire les événements
           let events = [];
           let eventCount = 0;
-          
+
           // Compter les événements dans les données
           if (data.includes('Employee ID') || data.includes('employeeID')) {
             eventCount = (data.match(/Employee ID|employeeID/g) || []).length;
@@ -122,7 +123,7 @@ export default async function handler(
           } else if (data.includes('AcsEvent')) {
             eventCount = (data.match(/AcsEvent/g) || []).length;
           }
-          
+
           results.push({
             name: approach.name,
             success: true,
@@ -132,9 +133,9 @@ export default async function handler(
             hasEvents: eventCount > 0,
             fullData: data
           });
-          
+
           console.log(`✅ ${approach.name}: ${data.length} chars, ${eventCount} événements détectés`);
-          
+
           // Si on trouve des événements, on peut s'arrêter ici
           if (eventCount > 0) {
             console.log(`🎉 Événements trouvés avec ${approach.name} !`);
@@ -147,7 +148,7 @@ export default async function handler(
             error: error.message,
             hasEvents: false
           });
-          
+
           console.log(`❌ ${approach.name}: ${error.message}`);
         }
       }
@@ -163,7 +164,7 @@ export default async function handler(
         results,
         bestApproach: bestApproach,
         totalEvents: bestApproach ? bestApproach.eventCount : 0,
-        message: bestApproach 
+        message: bestApproach
           ? `Meilleure approche trouvée: ${bestApproach.name} (${bestApproach.eventCount} événements)`
           : 'Aucune approche n\'a trouvé d\'événements'
       });

@@ -1,4 +1,5 @@
-import React from 'react';
+import { apiGet } from '@/lib/fetcher';
+import React, { useEffect, useState } from 'react';
 import PersonnelSidebar from './PersonnelSidebar';
 
 interface PersonnelLayoutProps {
@@ -7,11 +8,50 @@ interface PersonnelLayoutProps {
   description?: string;
 }
 
+interface HikvisionConfig {
+  ip: string;
+  port: number;
+}
+
 const PersonnelLayout: React.FC<PersonnelLayoutProps> = ({
   children,
   title,
   description,
 }) => {
+  const [readerConfig, setReaderConfig] = useState<HikvisionConfig | null>(
+    null
+  );
+
+  const fetchReaderConfig = React.useCallback(() => {
+    apiGet<{ success: boolean; config?: HikvisionConfig }>(
+      '/api/hikvision/config'
+    )
+      .then((res) => {
+        if (res.success && res.config) {
+          const { ip, port } = res.config;
+          setReaderConfig({ ip, port });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetchReaderConfig();
+  }, [fetchReaderConfig]);
+
+  useEffect(() => {
+    const onConfigUpdated = () => fetchReaderConfig();
+    window.addEventListener('personnel:config-updated', onConfigUpdated);
+    return () =>
+      window.removeEventListener('personnel:config-updated', onConfigUpdated);
+  }, [fetchReaderConfig]);
+
+  const portSuffix =
+    readerConfig && readerConfig.port !== 80 ? `:${readerConfig.port}` : '';
+  const readerLabel = readerConfig
+    ? `Lecteur: ${readerConfig.ip}${portSuffix}`
+    : 'Lecteur: —';
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="flex">
@@ -37,9 +77,7 @@ const PersonnelLayout: React.FC<PersonnelLayoutProps> = ({
                 <div className="flex items-center space-x-4">
                   <div className="flex items-center">
                     <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
-                    <span className="text-sm text-gray-600">
-                      Lecteur: 192.168.10.50
-                    </span>
+                    <span className="text-sm text-gray-600">{readerLabel}</span>
                   </div>
                 </div>
               </div>

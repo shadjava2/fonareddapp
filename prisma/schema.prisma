@@ -342,6 +342,19 @@ model acs_users {
   @@index([name], map: "idx_name")
 }
 
+/// Configuration du lecteur Hikvision (source de vérité en base)
+model hikvision_config {
+  id                    Int      @id @default(1)
+  ip                    String   @db.VarChar(64)
+  port                  Int      @default(80)
+  username              String   @db.VarChar(64)
+  password              String   @db.VarChar(255)
+  timezone_offset_minutes Int?   @map("timezone_offset_minute") @db.SmallInt
+  updated_at            DateTime @updatedAt @db.DateTime(0)
+
+  @@map("hikvision_config")
+}
+
 model ad_item {
   id               BigInt               @id @default(autoincrement()) @db.UnsignedBigInt
   slot_code        String               @db.VarChar(64)

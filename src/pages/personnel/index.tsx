@@ -1,19 +1,34 @@
 import PersonnelLayout from '@/components/layout/PersonnelLayout';
-import { apiGet } from '@/lib/fetcher';
+import { useToast } from '@/hooks/useToast';
+import { formatDateTimeFR } from '@/lib/formatDate';
+import { apiGet, apiPost } from '@/lib/fetcher';
 import {
+  ArrowDownTrayIcon,
   ClockIcon,
+  CreditCardIcon,
   ExclamationTriangleIcon,
+  FingerPrintIcon,
+  UserCircleIcon,
   UserGroupIcon,
   WifiIcon,
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
+interface CapacityStats {
+  person: number;
+  face: number;
+  card: number;
+  fingerprint: number;
+  event: number;
+}
+
 interface PersonnelStats {
   totalEvents: number;
   totalUsers: number;
   onlineDevices: number;
   recentEvents: number;
+  capacity: CapacityStats | null;
 }
 
 interface RecentEvent {
@@ -26,14 +41,17 @@ interface RecentEvent {
 }
 
 const PersonnelPage: React.FC = () => {
+  const { showSuccess, showError } = useToast();
   const [stats, setStats] = useState<PersonnelStats>({
     totalEvents: 0,
     totalUsers: 0,
     onlineDevices: 0,
     recentEvents: 0,
+    capacity: null,
   });
   const [recentEvents, setRecentEvents] = useState<RecentEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [importingAll, setImportingAll] = useState(false);
   const [deviceStatus, setDeviceStatus] = useState<
     'online' | 'offline' | 'checking'
   >('checking');
@@ -48,16 +66,20 @@ const PersonnelPage: React.FC = () => {
       setLoading(true);
       console.log('🔍 Chargement des données du personnel...');
 
-      // Récupérer les statistiques
-      const [eventsResponse, usersResponse, syncResponse] = await Promise.all([
-        apiGet<{ success: boolean; pagination: { total: number } }>(
-          '/api/hikvision/events?limit=1'
-        ),
-        apiGet<{ success: boolean; pagination: { total: number } }>(
-          '/api/hikvision/users?limit=1'
-        ),
-        apiGet<{ success: boolean; device: any }>('/api/hikvision/sync'),
-      ]);
+      // Récupérer les statistiques et les stats séparées (Person, Face, Card, FingerPrint, Event)
+      const [eventsResponse, usersResponse, syncResponse, statsResponse] =
+        await Promise.all([
+          apiGet<{ success: boolean; pagination: { total: number } }>(
+            '/api/hikvision/events?limit=1'
+          ),
+          apiGet<{ success: boolean; pagination: { total: number } }>(
+            '/api/hikvision/users?limit=1'
+          ),
+          apiGet<{ success: boolean; device: any }>('/api/hikvision/sync'),
+          apiGet<{ success: boolean; stats: CapacityStats }>(
+            '/api/hikvision/stats'
+          ),
+        ]);
 
       // Récupérer les événements récents
       const recentEventsResponse = await apiGet<{
@@ -77,6 +99,10 @@ const PersonnelPage: React.FC = () => {
         recentEvents: recentEventsResponse.success
           ? recentEventsResponse.events.length
           : 0,
+        capacity:
+          statsResponse.success && statsResponse.stats
+            ? statsResponse.stats
+            : null,
       };
 
       setStats(newStats);
@@ -113,15 +139,36 @@ const PersonnelPage: React.FC = () => {
     }
   };
 
-  const formatEventTime = (eventTime: string) => {
-    return new Date(eventTime).toLocaleString('fr-FR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+  const handleImportAll = async () => {
+    try {
+      setImportingAll(true);
+      const res = await apiPost<{
+        success: boolean;
+        message?: string;
+        users?: { imported: number; created: number; updated: number };
+        events?: { inserted: number; skipped: number; batches: number; error?: string };
+      }>('/api/hikvision/import-all', {});
+      if (res.success) {
+        const u = res.users;
+        const e = res.events;
+        const parts = [];
+        if (u) parts.push(`${u.imported} personne(s) (${u.created} créées, ${u.updated} mises à jour)`);
+        if (e?.error) parts.push(`Événements : ${e.error}`);
+        else if (e && e.inserted > 0) parts.push(`${e.inserted} événement(s) importés`);
+        showSuccess(parts.length ? parts.join(' • ') : res.message ?? 'Import terminé.');
+        await fetchPersonnelData();
+      } else {
+        showError(res.message ?? 'Erreur lors de l\'import.');
+      }
+    } catch (error) {
+      console.error('❌ Import complet:', error);
+      showError('Erreur lors de l\'import complet.');
+    } finally {
+      setImportingAll(false);
+    }
   };
+
+  const formatEventTime = (eventTime: string) => formatDateTimeFR(eventTime);
 
   const getEventTypeLabel = (eventType: string) => {
     const labels: { [key: string]: string } = {
@@ -198,56 +245,127 @@ const PersonnelPage: React.FC = () => {
               </div>
               <button
                 onClick={checkDeviceStatus}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-200"
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition duration-200"
               >
                 Actualiser
+              </button>
+              <button
+                onClick={handleImportAll}
+                disabled={importingAll || deviceStatus !== 'online'}
+                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition duration-200"
+              >
+                <ArrowDownTrayIcon className="h-5 w-5 mr-2" />
+                {importingAll ? 'Import en cours...' : 'Tout importer'}
               </button>
             </div>
           </div>
         </div>
 
-        {/* Statistiques */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="p-5">
+        {/* Statistiques séparées : Person, Face, Card, FingerPrint, Event */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-start justify-between gap-4 mb-4">
+            <h3 className="text-lg font-medium text-gray-900">
+              Informations / Capacité (séparées)
+            </h3>
+            <details className="text-right">
+              <summary className="text-sm text-gray-500 cursor-pointer hover:text-gray-700 list-none">
+                D&apos;où viennent ces chiffres ?
+              </summary>
+              <div className="mt-2 p-3 bg-gray-50 rounded text-left text-xs text-gray-600 max-w-md">
+                <p className="font-medium text-gray-700 mb-1">Source des données :</p>
+                <ul className="space-y-0.5 list-disc list-inside">
+                  <li><strong>Person</strong> : base (personnes importées depuis l&apos;appareil).</li>
+                  <li><strong>Face</strong> : appareil (bibliothèque visage FDLib).</li>
+                  <li><strong>Card</strong> : base ou appareil si l&apos;API Cartes est supportée (certains lecteurs comme DS-K1T n&apos;en ont pas).</li>
+                  <li><strong>FingerPrint</strong> : appareil (bibliothèque empreintes FDLib). On n&apos;importe pas les templates pour des raisons de sécurité.</li>
+                  <li><strong>Event</strong> : base (import possible seulement si l&apos;appareil expose l&apos;API AcsEvent ; le DS-K1T ne la supporte pas).</li>
+                </ul>
+              </div>
+            </details>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="border border-gray-200 rounded-lg p-4">
               <div className="flex items-center">
                 <div className="flex-shrink-0">
-                  <ClockIcon className="h-8 w-8 text-blue-600" />
+                  <UserCircleIcon className="h-8 w-8 text-indigo-600" />
                 </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      Total Événements
-                    </dt>
-                    <dd className="text-lg font-medium text-gray-900">
-                      {loading ? '...' : stats.totalEvents.toLocaleString()}
-                    </dd>
-                  </dl>
+                <div className="ml-3">
+                  <dt className="text-sm font-medium text-gray-500">Person</dt>
+                  <dd className="text-xl font-semibold text-gray-900">
+                    {loading || stats.capacity === null
+                      ? '...'
+                      : stats.capacity.person.toLocaleString()}
+                  </dd>
+                </div>
+              </div>
+            </div>
+            <div className="border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <UserGroupIcon className="h-8 w-8 text-blue-600" />
+                </div>
+                <div className="ml-3">
+                  <dt className="text-sm font-medium text-gray-500">Face</dt>
+                  <dd className="text-xl font-semibold text-gray-900">
+                    {loading || stats.capacity === null
+                      ? '...'
+                      : stats.capacity.face.toLocaleString()}
+                  </dd>
+                </div>
+              </div>
+            </div>
+            <div className="border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <CreditCardIcon className="h-8 w-8 text-green-600" />
+                </div>
+                <div className="ml-3">
+                  <dt className="text-sm font-medium text-gray-500">Card</dt>
+                  <dd className="text-xl font-semibold text-gray-900">
+                    {loading || stats.capacity === null
+                      ? '...'
+                      : stats.capacity.card.toLocaleString()}
+                  </dd>
+                </div>
+              </div>
+            </div>
+            <div className="border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <FingerPrintIcon className="h-8 w-8 text-amber-600" />
+                </div>
+                <div className="ml-3">
+                  <dt className="text-sm font-medium text-gray-500">
+                    FingerPrint
+                  </dt>
+                  <dd className="text-xl font-semibold text-gray-900">
+                    {loading || stats.capacity === null
+                      ? '...'
+                      : stats.capacity.fingerprint.toLocaleString()}
+                  </dd>
+                </div>
+              </div>
+            </div>
+            <div className="border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <ClockIcon className="h-8 w-8 text-sky-600" />
+                </div>
+                <div className="ml-3">
+                  <dt className="text-sm font-medium text-gray-500">Event</dt>
+                  <dd className="text-xl font-semibold text-gray-900">
+                    {loading || stats.capacity === null
+                      ? '...'
+                      : stats.capacity.event.toLocaleString()}
+                  </dd>
                 </div>
               </div>
             </div>
           </div>
+        </div>
 
-          <div className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="p-5">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <UserGroupIcon className="h-8 w-8 text-green-600" />
-                </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      Utilisateurs ACS
-                    </dt>
-                    <dd className="text-lg font-medium text-gray-900">
-                      {loading ? '...' : stats.totalUsers.toLocaleString()}
-                    </dd>
-                  </dl>
-                </div>
-              </div>
-            </div>
-          </div>
-
+        {/* Statut lecteur + Événements récents */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-white overflow-hidden shadow rounded-lg">
             <div className="p-5">
               <div className="flex items-center">
@@ -269,7 +387,6 @@ const PersonnelPage: React.FC = () => {
               </div>
             </div>
           </div>
-
           <div className="bg-white overflow-hidden shadow rounded-lg">
             <div className="p-5">
               <div className="flex items-center">
@@ -279,7 +396,7 @@ const PersonnelPage: React.FC = () => {
                 <div className="ml-5 w-0 flex-1">
                   <dl>
                     <dt className="text-sm font-medium text-gray-500 truncate">
-                      Événements récents
+                      Événements récents (aperçu)
                     </dt>
                     <dd className="text-lg font-medium text-gray-900">
                       {loading ? '...' : stats.recentEvents}

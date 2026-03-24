@@ -7,7 +7,7 @@
 - ✅ Node.js 18+ installé
 - ✅ MySQL démarré et accessible sur `localhost:32768`
 - ✅ Base de données `fonaredd-app` existante
-- ✅ Base de données MySQL configurée avec vos identifiants
+- ✅ Utilisateur `shad` avec mot de passe `SDconceptsrdc@243`
 
 ### 🎯 Déploiement en 3 étapes
 
@@ -56,7 +56,7 @@ npm run dev
 Le fichier `.env` est déjà configuré avec :
 
 ```env
-DATABASE_URL="mysql://username:password@host:3306/database_name?allowPublicKeyRetrieval=true&ssl=false&connectTimeout=10000"
+DATABASE_URL="mysql://shad:SDconceptsrdc@243@localhost:32768/fonaredd-app"
 JWT_SECRET="your-super-secret-jwt-key-change-in-production-very-long-and-secure"
 NEXTAUTH_URL="http://localhost:3000"
 NEXTAUTH_SECRET="your-nextauth-secret-change-in-production"

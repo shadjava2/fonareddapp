@@ -1,8 +1,9 @@
 import PersonnelLayout from '@/components/layout/PersonnelLayout';
 import Pagination from '@/components/ui/Pagination';
 import SearchBar from '@/components/ui/SearchBar';
-import { apiGet } from '@/lib/fetcher';
-import { UserGroupIcon } from '@heroicons/react/24/outline';
+import { useToast } from '@/hooks/useToast';
+import { apiGet, apiPost } from '@/lib/fetcher';
+import { ArrowDownTrayIcon, UserGroupIcon } from '@heroicons/react/24/outline';
 import { useEffect, useState } from 'react';
 
 interface ACSUser {
@@ -14,9 +15,28 @@ interface ACSUser {
   raw: any;
 }
 
+/** Valeurs affichées en priorité depuis user, puis depuis user.raw */
+function displayName(user: ACSUser): string {
+  const n =
+    (user.name && String(user.name).trim()) ||
+    (user.raw?.personName ?? user.raw?.name ?? user.raw?.employeeName ?? user.raw?.Name);
+  return n != null && String(n).trim() !== '' ? String(n).trim() : 'N/A';
+}
+
+function displayDepartment(user: ACSUser): string | null {
+  const d =
+    user.department ||
+    user.raw?.department ||
+    user.raw?.deptName ||
+    user.raw?.departmentName;
+  return d != null && String(d).trim() !== '' ? String(d).trim() : null;
+}
+
 const ACSUsersPage: React.FC = () => {
+  const { showSuccess, showError } = useToast();
   const [users, setUsers] = useState<ACSUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(25);
   const [searchQuery, setSearchQuery] = useState('');
@@ -43,7 +63,7 @@ const ACSUsersPage: React.FC = () => {
       const params = new URLSearchParams({
         page: page.toString(),
         limit: limit.toString(),
-        ...(search && { employee_no: search }),
+        ...(search && { search }),
       });
 
       const response = await apiGet<{
@@ -97,6 +117,35 @@ const ACSUsersPage: React.FC = () => {
     fetchUsers(1, itemsPerPage, query);
   };
 
+  const handleImportFromDevice = async () => {
+    try {
+      setSyncing(true);
+      const response = await apiPost<{
+        success: boolean;
+        message: string;
+        imported?: number;
+        created?: number;
+        updated?: number;
+      }>('/api/hikvision/users-sync', {});
+      if (response.success) {
+        showSuccess(
+          response.imported
+            ? `${response.imported} personne(s) importée(s) depuis l'appareil`
+            : response.message
+        );
+        await fetchUsers(1, itemsPerPage, searchQuery);
+      } else {
+        showError(response.message || "Erreur lors de l'import");
+      }
+    } catch (error: any) {
+      showError(
+        error?.message || "Impossible d'importer depuis l'appareil. Vérifiez la configuration du lecteur."
+      );
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const getDepartmentColor = (department?: string) => {
     if (!department) return 'bg-gray-100 text-gray-800';
 
@@ -130,12 +179,22 @@ const ACSUsersPage: React.FC = () => {
                 </p>
               </div>
             </div>
-            <button
-              onClick={() => fetchUsers()}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition duration-200"
-            >
-              Actualiser
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleImportFromDevice}
+                disabled={syncing}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-200 disabled:opacity-50"
+              >
+                <ArrowDownTrayIcon className="h-5 w-5" />
+                {syncing ? 'Import en cours…' : "Importer depuis l'appareil"}
+              </button>
+              <button
+                onClick={() => fetchUsers()}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition duration-200"
+              >
+                Actualiser
+              </button>
+            </div>
           </div>
         </div>
 
@@ -169,14 +228,23 @@ const ACSUsersPage: React.FC = () => {
             </p>
           </div>
         ) : users.length === 0 ? (
-          <div className="p-6 text-center">
-            <UserGroupIcon className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">
+          <div className="p-8 text-center bg-white rounded-lg shadow">
+            <UserGroupIcon className="mx-auto h-14 w-14 text-gray-400" />
+            <h3 className="mt-3 text-lg font-medium text-gray-900">
               Aucun utilisateur trouvé
             </h3>
-            <p className="mt-1 text-sm text-gray-500">
-              Les utilisateurs du lecteur d'empreinte apparaîtront ici.
+            <p className="mt-2 text-sm text-gray-600 max-w-md mx-auto">
+              Il faut d’abord importer les personnes depuis l’appareil (lecteur
+              d’empreinte). Les utilisateurs apparaîtront ici après l’import.
             </p>
+            <button
+              onClick={handleImportFromDevice}
+              disabled={syncing}
+              className="mt-4 inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-200 disabled:opacity-50"
+            >
+              <ArrowDownTrayIcon className="h-5 w-5" />
+              {syncing ? 'Import en cours…' : "Importer depuis l'appareil"}
+            </button>
           </div>
         ) : (
           <div className="bg-white shadow rounded-lg overflow-hidden">
@@ -191,13 +259,10 @@ const ACSUsersPage: React.FC = () => {
                       Nom
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Département
+                      Service
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Lecteur
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Données brutes
                     </th>
                   </tr>
                 </thead>
@@ -222,28 +287,26 @@ const ACSUsersPage: React.FC = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
-                          {user.name || 'N/A'}
+                          {displayName(user)}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        {user.department ? (
-                          <span
-                            className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getDepartmentColor(user.department)}`}
-                          >
-                            {user.department}
-                          </span>
-                        ) : (
-                          <span className="text-sm text-gray-500">N/A</span>
-                        )}
+                        {(() => {
+                          const dept = displayDepartment(user);
+                          return dept ? (
+                            <span
+                              className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getDepartmentColor(dept)}`}
+                            >
+                              {dept}
+                            </span>
+                          ) : (
+                            <span className="text-sm text-gray-500">N/A</span>
+                          );
+                        })()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
                           {user.device_ip}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-500">
-                          {user.raw ? 'Disponible' : 'N/A'}
                         </div>
                       </td>
                     </tr>

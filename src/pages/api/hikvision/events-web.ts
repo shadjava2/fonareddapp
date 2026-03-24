@@ -10,8 +10,8 @@ export default async function handler(
     try {
       console.log('🔍 Récupération des événements via interface web Hikvision...');
 
-      const config = getHikvisionConfig();
-      
+      const config = await getHikvisionConfig();
+
       // Créer le service DIGEST
       const digestService = new HikvisionDigestService({
         ip: config.ip,
@@ -19,6 +19,7 @@ export default async function handler(
         password: config.password,
         port: config.port,
         useHttps: false,
+        timezone_offset_minutes: config.timezone_offset_minutes ?? undefined,
       });
 
       const results = [];
@@ -69,26 +70,26 @@ export default async function handler(
       for (const endpoint of webEndpoints) {
         try {
           console.log(`🔍 Test: ${endpoint.name}`);
-          
+
           let response;
           if (endpoint.method === 'POST') {
             response = await digestService.hikGet(endpoint.path, {
               method: 'POST',
               headers: {
-                'Content-Type': endpoint.body && typeof endpoint.body === 'string' 
-                  ? 'application/xml' 
+                'Content-Type': endpoint.body && typeof endpoint.body === 'string'
+                  ? 'application/xml'
                   : 'application/json',
               },
-              body: typeof endpoint.body === 'string' 
-                ? endpoint.body 
+              body: typeof endpoint.body === 'string'
+                ? endpoint.body
                 : JSON.stringify(endpoint.body)
             });
           } else {
             response = await digestService.hikGet(endpoint.path);
           }
-          
+
           const text = await response.text();
-          
+
           results.push({
             name: endpoint.name,
             path: endpoint.path,
@@ -101,7 +102,7 @@ export default async function handler(
             dataPreview: text.substring(0, 500),
             fullData: text
           });
-          
+
           console.log(`✅ ${endpoint.name}: ${response.status} (${text.length} chars)`);
         } catch (error: any) {
           results.push({
@@ -112,7 +113,7 @@ export default async function handler(
             error: error.message,
             status: 'ERROR'
           });
-          
+
           console.log(`❌ ${endpoint.name}: ${error.message}`);
         }
       }
@@ -120,7 +121,7 @@ export default async function handler(
       // Test spécial pour récupérer les événements comme l'interface web
       try {
         console.log('🔍 Test spécial: Recherche d\'événements avec paramètres web...');
-        
+
         // Essayer de simuler la requête de l'interface web
         const searchResponse = await digestService.hikGet('/ISAPI/Event/notification/alertStream', {
           method: 'POST',
@@ -145,9 +146,9 @@ export default async function handler(
   </searchResultList>
 </EventNotificationAlert>`
         });
-        
+
         const searchText = await searchResponse.text();
-        
+
         results.push({
           name: 'Recherche d\'événements (simulation interface web)',
           path: '/ISAPI/Event/notification/alertStream',
@@ -160,7 +161,7 @@ export default async function handler(
           dataPreview: searchText.substring(0, 1000),
           fullData: searchText
         });
-        
+
         console.log(`✅ Recherche d'événements: ${searchResponse.status} (${searchText.length} chars)`);
       } catch (error: any) {
         results.push({
@@ -171,7 +172,7 @@ export default async function handler(
           error: error.message,
           status: 'ERROR'
         });
-        
+
         console.log(`❌ Recherche d'événements: ${error.message}`);
       }
 

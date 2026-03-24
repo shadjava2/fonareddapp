@@ -10,7 +10,7 @@ export default async function handler(
     try {
       console.log('🔍 Diagnostic complet du lecteur Hikvision...');
 
-      const config = getHikvisionConfig();
+      const config = await getHikvisionConfig();
 
       // Créer le service DIGEST
       const digestService = new HikvisionDigestService({
@@ -19,6 +19,7 @@ export default async function handler(
         password: config.password,
         port: config.port,
         useHttps: false,
+        timezone_offset_minutes: config.timezone_offset_minutes ?? undefined,
       });
 
       const diagnostic = {
@@ -113,33 +114,75 @@ export default async function handler(
         });
       }
 
-      // Test 5: Endpoints alternatifs pour les événements
-      const eventEndpoints = [
-        '/ISAPI/AccessControl/AcsEvent',
-        '/ISAPI/AccessControl/AcsEvent?format=json',
-        '/ISAPI/AccessControl/AcsEvent?format=xml',
+      // Test 5: Endpoints événements — AcsEvent en POST sur DS-K1T321MFWX (GET = 404)
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const toHikDate = (d: Date) => {
+        const tz = -d.getTimezoneOffset();
+        const sign = tz >= 0 ? '+' : '-';
+        const tzH = Math.floor(Math.abs(tz) / 60);
+        const tzM = Math.abs(tz) % 60;
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}${sign}${pad(tzH)}:${pad(tzM)}`;
+      };
+      const now = new Date();
+      const startStr = toHikDate(new Date(now.getTime() - 24 * 60 * 60 * 1000));
+      const endStr = toHikDate(now);
+
+      const acsEventPostBody = {
+        AcsEventCond: {
+          searchID: '1',
+          searchResultPosition: 0,
+          maxResults: 100,
+          major: 0,
+          minor: 0,
+          startTime: startStr,
+          endTime: endStr,
+          timeReverseOrder: true,
+        },
+      };
+
+      // AcsEvent : POST uniquement (GET non supporté sur ce terminal)
+      try {
+        console.log('🔍 Test endpoint POST /ISAPI/AccessControl/AcsEvent?format=json');
+        const data = await digestService.hikPostJSON(
+          '/ISAPI/AccessControl/AcsEvent?format=json',
+          acsEventPostBody
+        );
+        const hasEvents = !!(data?.AcsEvent?.InfoList || data?.AcsEvent);
+        diagnostic.tests.push({
+          name: 'Endpoint POST /ISAPI/AccessControl/AcsEvent?format=json',
+          success: true,
+          status: 200,
+          message: hasEvents ? 'Endpoint accessible (POST)' : 'Endpoint accessible, 0 événement dans la fenêtre',
+          data: JSON.stringify(data).substring(0, 200),
+        });
+      } catch (error: any) {
+        diagnostic.tests.push({
+          name: 'Endpoint POST /ISAPI/AccessControl/AcsEvent?format=json',
+          success: false,
+          error: error.message,
+        });
+      }
+
+      // Autres endpoints en GET (souvent 404 sur DS-K1T)
+      const getOnlyEndpoints = [
         '/ISAPI/Event/notification/alertStream',
         '/ISAPI/System/status',
       ];
-
-      for (const endpoint of eventEndpoints) {
+      for (const endpoint of getOnlyEndpoints) {
         try {
-          console.log(`🔍 Test endpoint: ${endpoint}`);
+          console.log(`🔍 Test endpoint GET: ${endpoint}`);
           const response = await digestService.hikGet(endpoint);
           const text = await response.text();
-
           diagnostic.tests.push({
-            name: `Endpoint ${endpoint}`,
+            name: `Endpoint GET ${endpoint}`,
             success: response.ok,
             status: response.status,
-            message: response.ok
-              ? 'Endpoint accessible'
-              : 'Endpoint non accessible',
-            data: text.substring(0, 200), // Premiers 200 caractères
+            message: response.ok ? 'Endpoint accessible' : 'Endpoint non accessible (404 normal sur DS-K1T)',
+            data: text.substring(0, 200),
           });
         } catch (error: any) {
           diagnostic.tests.push({
-            name: `Endpoint ${endpoint}`,
+            name: `Endpoint GET ${endpoint}`,
             success: false,
             error: error.message,
           });

@@ -3,20 +3,26 @@
 ## ✅ Étape 1 : Vérification des Prérequis
 
 ### 1.1 Vérifier Node.js
+
 Ouvrez PowerShell ou CMD et exécutez :
+
 ```batch
 node --version
 ```
+
 **Doit afficher :** v18.x.x ou supérieur
 
 Si Node.js n'est pas installé :
+
 - Téléchargez depuis : https://nodejs.org/
 - Installez la version LTS (18 ou supérieur)
 
 ### 1.2 Vérifier npm
+
 ```batch
 npm --version
 ```
+
 **Doit afficher :** une version de npm
 
 ---
@@ -30,6 +36,7 @@ npm install --production --no-optional
 ```
 
 Cette commande va :
+
 - Installer uniquement les dépendances de production
 - Ignorer les dépendances optionnelles
 - Prendre quelques minutes
@@ -62,6 +69,7 @@ NODE_ENV="production"
 ```
 
 **Important :**
+
 - Remplacez `username`, `password`, `host`, et `database_name` par vos propres valeurs
 - Vérifiez que `DATABASE_URL` correspond à votre configuration MySQL
 - Vérifiez que le port MySQL est correct
@@ -76,15 +84,19 @@ Assurez-vous que MySQL est en cours d'exécution et accessible.
 ## ✅ Étape 5 : Démarrage de l'Application
 
 ### Option A : Double-clic sur start.bat
+
 Double-cliquez sur le fichier `start.bat` dans `C:\prodfonaredd`
 
 ### Option B : Via la ligne de commande
+
 Ouvrez PowerShell ou CMD dans `C:\prodfonaredd` et exécutez :
+
 ```batch
 start.bat
 ```
 
 ### Option C : Via npm
+
 ```batch
 npm start
 ```
@@ -94,6 +106,7 @@ npm start
 ## ✅ Étape 6 : Vérification
 
 Une fois l'application démarrée, vous devriez voir :
+
 ```
 ========================================
   FONAREDD APP - PRODUCTION
@@ -109,6 +122,7 @@ L'application sera accessible sur: http://localhost:3001
 ```
 
 ### Accéder à l'application :
+
 - **Localement :** http://localhost:3001
 - **Depuis le réseau :** http://192.168.10.75:3001 (remplacez par l'IP de votre serveur)
 
@@ -117,25 +131,30 @@ L'application sera accessible sur: http://localhost:3001
 ## 🔧 Dépannage
 
 ### Erreur : "Node.js n'est pas installé"
+
 → Installez Node.js 18+ depuis https://nodejs.org/
 
 ### Erreur : "Echec de la generation Prisma"
+
 → Vérifiez votre `DATABASE_URL` dans `.env.local`
 → Vérifiez que MySQL est démarré
 → Vérifiez que la base de données existe
 
 ### Erreur : "Port 3001 déjà utilisé"
+
 ```batch
 netstat -ano | findstr :3001
 taskkill /PID <PID> /F
 ```
 
 ### L'application ne démarre pas
+
 → Vérifiez les logs dans la console
 → Vérifiez que tous les fichiers sont présents
 → Vérifiez les permissions du dossier
 
 ### Problème d'affichage
+
 → Vérifiez que `NEXTAUTH_URL` dans `.env.local` est bien `http://localhost:3001`
 → Vérifiez que le port 3001 est accessible
 
@@ -144,6 +163,7 @@ taskkill /PID <PID> /F
 ## 🔄 Démarrage Automatique (Optionnel)
 
 Pour que l'application démarre automatiquement au démarrage de Windows, consultez :
+
 - `GUIDE-DEPLOIEMENT-WINDOWS.md`
 - Utilisez NSSM (Non-Sucking Service Manager) pour créer un service Windows
 
@@ -166,4 +186,3 @@ Pour que l'application démarre automatiquement au démarrage de Windows, consul
 **Date de création :** 2024
 **Version :** 1.0
 **Port de production :** 3001
-

@@ -2,7 +2,13 @@ import PersonnelLayout from '@/components/layout/PersonnelLayout';
 import { useToast } from '@/hooks/useToast';
 import { apiGet } from '@/lib/fetcher';
 import { Cog6ToothIcon } from '@heroicons/react/24/outline';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+
+interface ReaderConfig {
+  ip: string;
+  port: number;
+  username: string;
+}
 
 interface DiagnosticTest {
   name: string;
@@ -32,7 +38,23 @@ interface DiagnosticResult {
 const DebugPage: React.FC = () => {
   const [diagnostic, setDiagnostic] = useState<DiagnosticResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [readerConfig, setReaderConfig] = useState<ReaderConfig | null>(null);
   const { showSuccess, showError } = useToast();
+
+  useEffect(() => {
+    apiGet<{ success: boolean; config?: ReaderConfig }>('/api/hikvision/config')
+      .then((res) => {
+        if (res.success && res.config) {
+          const c = res.config;
+          setReaderConfig({
+            ip: c.ip,
+            port: c.port,
+            username: c.username,
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const runDiagnostic = async () => {
     try {
@@ -100,6 +122,29 @@ const DebugPage: React.FC = () => {
       description="Diagnostic complet du lecteur Hikvision"
     >
       <div className="space-y-6">
+        {/* Configuration enregistrée (données utilisées pour le diagnostic) */}
+        {readerConfig && (
+          <div className="bg-white rounded-lg shadow p-4 border-l-4 border-purple-500">
+            <h3 className="text-sm font-medium text-gray-700 mb-2">
+              Configuration enregistrée (utilisée pour le diagnostic)
+            </h3>
+            <div className="flex flex-wrap gap-4 text-sm">
+              <span>
+                <strong>IP:</strong>{' '}
+                <code className="bg-gray-100 px-1 rounded">{readerConfig.ip}</code>
+              </span>
+              <span>
+                <strong>Port:</strong>{' '}
+                <code className="bg-gray-100 px-1 rounded">{readerConfig.port}</code>
+              </span>
+              <span>
+                <strong>Utilisateur:</strong>{' '}
+                <code className="bg-gray-100 px-1 rounded">{readerConfig.username}</code>
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* En-tête */}
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center justify-between">
@@ -256,7 +301,7 @@ const DebugPage: React.FC = () => {
               <div className="space-y-4">
                 {diagnostic.tests.map((test, index) => (
                   <div
-                    key={index}
+                    key={`${test.name}-${index}`}
                     className="border border-gray-200 rounded-lg p-4"
                   >
                     <div className="flex items-center justify-between mb-2">
@@ -312,7 +357,17 @@ const DebugPage: React.FC = () => {
               <strong>Si la connectivité échoue :</strong>
             </p>
             <ul className="list-disc list-inside ml-4 space-y-1">
-              <li>Vérifiez que l'IP est correcte (192.168.10.50)</li>
+              <li>
+                Vérifiez que l'IP est correcte (
+                {readerConfig ? (
+                  <code className="bg-yellow-100 px-1 rounded">
+                    {readerConfig.ip}
+                  </code>
+                ) : (
+                  'voir Configuration ci-dessus'
+                )}
+                )
+              </li>
               <li>Vérifiez que le lecteur est sur le même réseau</li>
               <li>
                 Vérifiez que l'authentification DIGEST est activée sur le
@@ -329,9 +384,14 @@ const DebugPage: React.FC = () => {
               <li>Vérifiez les permissions de l'utilisateur admin</li>
               <li>
                 Testez manuellement avec curl :{' '}
-                <code className="bg-yellow-100 px-1 rounded">
-                  curl --digest -u admin:Fonaredd
-                  http://192.168.10.50/ISAPI/AccessControl/AcsEvent
+                <code className="bg-yellow-100 px-1 rounded block mt-1 break-all">
+                  curl --digest -u {readerConfig?.username ?? 'admin'}:****
+                  {' '}
+                  http://{readerConfig?.ip ?? 'IP'}
+                  {readerConfig?.port && readerConfig.port !== 80
+                    ? `:${readerConfig.port}`
+                    : ''}
+                  /ISAPI/AccessControl/AcsEvent
                 </code>
               </li>
             </ul>

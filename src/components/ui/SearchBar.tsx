@@ -15,14 +15,16 @@ const SearchBar: React.FC<SearchBarProps> = ({
 }) => {
   const [query, setQuery] = useState('');
 
-  // Debounce search
+  // Debounce search : ne dépendre que de query pour éviter une boucle
+  // (si onSearch est dans les deps, il change à chaque rendu parent → effet en boucle)
   useEffect(() => {
     const timer = setTimeout(() => {
       onSearch(query);
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [query, onSearch]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- onSearch volontairement omis
+  }, [query]);
 
   const handleClear = () => {
     setQuery('');

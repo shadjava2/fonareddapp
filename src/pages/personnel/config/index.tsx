@@ -9,7 +9,19 @@ interface HikvisionConfig {
   username: string;
   password: string;
   port: number;
+  timezone_offset_minutes?: number | null;
 }
+
+const TIMEZONE_OPTIONS: { value: number; label: string }[] = [
+  { value: -480, label: '(GMT-08:00) Pacific Time (US, Canada, Mexico)' },
+  { value: -420, label: '(GMT-07:00) Mountain Time' },
+  { value: -360, label: '(GMT-06:00) Central Time' },
+  { value: -300, label: '(GMT-05:00) Eastern Time' },
+  { value: 0, label: '(GMT+00:00) UTC' },
+  { value: 60, label: '(GMT+01:00) Amsterdam, Berlin, Rome, Paris' },
+  { value: 120, label: '(GMT+02:00) Bruxelles, Kinshasa' },
+  { value: 180, label: '(GMT+03:00) Moscow, Nairobi' },
+];
 
 const ConfigPage: React.FC = () => {
   const { showSuccess, showError } = useToast();
@@ -18,6 +30,7 @@ const ConfigPage: React.FC = () => {
     username: 'admin',
     password: '',
     port: 80,
+    timezone_offset_minutes: null,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -36,7 +49,11 @@ const ConfigPage: React.FC = () => {
       }>('/api/hikvision/config');
 
       if (response.success && response.config) {
-        setConfig(response.config);
+        const c = response.config as HikvisionConfig;
+        setConfig({
+          ...c,
+          timezone_offset_minutes: c.timezone_offset_minutes ?? null,
+        });
         console.log('✅ Configuration récupérée:', response.config);
       }
     } catch (error) {
@@ -56,6 +73,8 @@ const ConfigPage: React.FC = () => {
 
       if (response.success) {
         showSuccess('Configuration sauvegardée avec succès');
+        await fetchConfig();
+        window.dispatchEvent(new CustomEvent('personnel:config-updated'));
       } else {
         showError(response.message || 'Erreur lors de la sauvegarde');
       }
@@ -114,7 +133,7 @@ const ConfigPage: React.FC = () => {
 
   const handleInputChange = (
     field: keyof HikvisionConfig,
-    value: string | number
+    value: string | number | null
   ) => {
     setConfig((prev) => ({
       ...prev,
@@ -242,6 +261,36 @@ const ConfigPage: React.FC = () => {
                   placeholder="Mot de passe du lecteur"
                 />
               </div>
+
+              <div className="md:col-span-2">
+                <label
+                  htmlFor="timezone"
+                  className="block text-sm font-medium text-gray-700 mb-2"
+                >
+                  Fuseau horaire du lecteur (aligné sur Time Settings)
+                </label>
+                <select
+                  id="timezone"
+                  value={config.timezone_offset_minutes ?? ''}
+                  onChange={(e) =>
+                    handleInputChange(
+                      'timezone_offset_minutes',
+                      e.target.value === '' ? null : parseInt(e.target.value, 10)
+                    )
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                >
+                  <option value="">Même que le serveur</option>
+                  {TIMEZONE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-gray-500">
+                  Choisir le même fuseau que dans Configuration → System → Time Settings du lecteur. Les dates envoyées (startTime/endTime) seront alignées dessus.
+                </p>
+              </div>
             </div>
           )}
 
@@ -291,6 +340,16 @@ const ConfigPage: React.FC = () => {
                 http://{config.ip}:{config.port}
               </span>
             </div>
+            <div>
+              <span className="font-medium text-blue-800">
+                Fuseau lecteur (Time Settings) :
+              </span>
+              <span className="ml-2 text-blue-600">
+                {config.timezone_offset_minutes != null
+                  ? TIMEZONE_OPTIONS.find((o) => o.value === config.timezone_offset_minutes)?.label ?? `UTC${config.timezone_offset_minutes >= 0 ? '+' : ''}${config.timezone_offset_minutes / 60}`
+                  : 'Même que le serveur'}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -304,7 +363,8 @@ const ConfigPage: React.FC = () => {
               1. <strong>Connectez-vous au lecteur Hikvision</strong> via votre
               navigateur à l'adresse{' '}
               <code className="bg-yellow-100 px-2 py-1 rounded">
-                http://192.168.10.50
+                http://{config.ip}
+                {config.port !== 80 ? `:${config.port}` : ''}
               </code>
             </p>
             <p>
