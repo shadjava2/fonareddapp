@@ -46,7 +46,7 @@ interface MonitoringViewProps {
 const MonitoringView: React.FC<MonitoringViewProps> = (props) => {
   const {
     monitoringData,
-    recentEvents,
+    recentEvents = [],
     loading,
     syncingEvents,
     autoRefresh,

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import MonitoringView, {
   type MonitoringData,
   type RecentEvent,
-} from './MonitoringView';
+} from '@/components/personnel/monitoring/MonitoringView';
 
 const MonitoringPage: React.FC = () => {
   const { showSuccess, showError } = useToast();

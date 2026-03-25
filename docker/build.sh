@@ -44,29 +44,27 @@ echo "🚀 Démarrage des services..."
 echo "Choisissez le mode de lancement :"
 echo "1) Développement (avec hot reload)"
 echo "2) Production"
-echo "3) Base de données uniquement"
+echo "3) Redis uniquement (MySQL = hôte, voir .env DATABASE_URL)"
 read -p "Votre choix (1-3): " -n 1 -r
 echo
 
 case $REPLY in
     1)
         echo "🔧 Lancement en mode développement..."
-        docker-compose up -d app-dev mysql redis
+        docker-compose up -d app-dev redis
         echo "✅ Application démarrée en mode développement"
-        echo "📱 URL: http://localhost:3000"
+        echo "📱 URL: http://localhost:13000 (voir FONAREDD_APP_DEV_PORT dans .env)"
         ;;
     2)
         echo "🏭 Lancement en mode production..."
-        docker-compose up -d app-prod mysql redis nginx
+        docker-compose up -d app-prod caddy redis
         echo "✅ Application démarrée en mode production"
-        echo "📱 URL: http://localhost:3001"
+        echo "📱 App directe: http://localhost:13001 — via Caddy: http://localhost:18080"
         ;;
     3)
-        echo "🗄️  Lancement de la base de données uniquement..."
-        docker-compose up -d mysql redis
-        echo "✅ Base de données démarrée"
-        echo "🗄️  MySQL: localhost:3306"
-        echo "🔴 Redis: localhost:6379"
+        echo "🔴 Lancement de Redis uniquement..."
+        docker-compose up -d redis
+        echo "✅ Redis démarré (ports selon .env, défaut 16379)"
         ;;
     *)
         echo "❌ Choix invalide"
@@ -88,16 +86,11 @@ echo ""
 echo "📋 Commandes utiles :"
 echo "  docker-compose logs -f app-dev    # Voir les logs développement"
 echo "  docker-compose logs -f app-prod   # Voir les logs production"
-echo "  docker-compose logs -f mysql      # Voir les logs MySQL"
+echo "  docker-compose logs -f caddy      # Voir les logs Caddy"
 echo "  docker-compose down               # Arrêter tous les services"
 echo "  docker-compose exec app-dev sh    # Accéder au shell de l'app"
 echo ""
-echo "🔧 Configuration de la base de données :"
-echo "  Host: localhost"
-echo "  Port: 3306"
-echo "  Database: fonaredd_db"
-echo "  Username: fonaredd_user"
-echo "  Password: fonaredd_password"
+echo "🔧 MySQL sur l’hôte : renseignez DATABASE_URL dans .env (ex. host.docker.internal:3306)"
 echo ""
 echo "👤 Utilisateur par défaut :"
 echo "  Username: admin"

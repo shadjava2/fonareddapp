@@ -1,27 +1,16 @@
-# Configuration override pour le développement local
-version: "3.8"
+# Développement local (fusionné avec docker-compose.yml si ce fichier est présent).
+# Pour le serveur : renommez ou supprimez ce fichier, ou déployez avec -f docker-compose.yml seul.
 
 services:
   app-dev:
     environment:
       - NODE_ENV=development
-      - DATABASE_URL=mysql://fonaredd_user:fonaredd_password@mysql:3306/fonaredd_db
-      - JWT_SECRET=dev_jwt_secret_key_not_for_production
-      - NEXTAUTH_URL=http://localhost:3000
-      - NEXTAUTH_SECRET=dev_nextauth_secret_not_for_production
+      - JWT_SECRET=${JWT_SECRET:-dev_jwt_secret_not_for_production}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-dev_nextauth_secret_not_for_production}
     volumes:
       - .:/app
       - /app/node_modules
       - /app/.next
     ports:
-      - "3000:3000"
-      - "9229:9229" # Port pour le debug Node.js
-
-  mysql:
-    ports:
-      - "3306:3306"
-    environment:
-      - MYSQL_ROOT_PASSWORD=rootpassword
-      - MYSQL_DATABASE=fonaredd_db
-      - MYSQL_USER=fonaredd_user
-      - MYSQL_PASSWORD=fonaredd_password
+      - "${FONAREDD_APP_DEV_PORT:-13000}:3000"
+      - "${FONAREDD_APP_DEV_DEBUG_PORT:-19229}:9229"

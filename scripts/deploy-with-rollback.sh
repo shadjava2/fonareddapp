@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
-# Déploiement Fonaredd (Next.js + MySQL Docker) avec rollback de l'image app-prod
+# Déploiement Fonaredd (Next.js + Caddy, MySQL sur l’hôte) — rollback image app-prod
 #
-# Usage (sur le serveur Ubuntu, depuis la racine du dépôt cloné) :
+# Usage :
 #   chmod +x scripts/deploy-with-rollback.sh
 #   ./scripts/deploy-with-rollback.sh
 #
+# Prérequis : .env avec DATABASE_URL (MySQL hôte, ex. host.docker.internal:3306),
+# JWT_SECRET, NEXTAUTH_URL (ex. https://fonaredd.com), NEXTAUTH_SECRET
+#
 # Variables utiles :
 #   GIT_PULL=1              — git pull --ff-only avant build
-#   COMPOSE_PROJECT_NAME    — défaut : fonaredd
-#   COMPOSE_FILE            — défaut : docker-compose.yml seul (sans override local)
-#   DEPLOY_SERVICES         — défaut : "mysql app-prod"
-#   APP_HEALTH_URL          — défaut : http://127.0.0.1:3001/ (Next.js)
+#   DEPLOY_SERVICES         — défaut : "app-prod caddy"
+#   APP_HEALTH_URL          — défaut : via Caddy http://127.0.0.1:${FONAREDD_CADDY_HTTP}/
 #   RUN_MIGRATE=0           — désactive Prisma migrate deploy
-#   DEPLOY_LOG=1            — journal dans logs/deploy-YYYYMMDD.log
-#   BUILD_NO_CACHE=1        — build --no-cache
+#   DEPLOY_LOG=1
+#   BUILD_NO_CACHE=1
 #
-# Tunnel Cloudflare : souvent hors Compose (cloudflared sur l'hôte). Pointez le tunnel
-# vers http://127.0.0.1:3001 ou vers Nginx (80) si vous ajoutez nginx aux services déployés.
+# Cloudflare Tunnel → http://127.0.0.1:<FONAREDD_CADDY_HTTP> (défaut 18080)
 
 set -Eeo pipefail
 
@@ -30,8 +30,18 @@ ENV_FILE="${ENV_FILE:-$REPO_ROOT/.env}"
 ROLLBACK_FILE="$REPO_ROOT/.deploy-rollback"
 CURRENT_FILE="$REPO_ROOT/.deploy-current"
 
-DEPLOY_SERVICES="${DEPLOY_SERVICES:-mysql app-prod}"
-APP_HEALTH_URL="${APP_HEALTH_URL:-http://127.0.0.1:3001/}"
+if [ -f "$ENV_FILE" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "$ENV_FILE" 2>/dev/null || true
+  set +a
+fi
+
+DEPLOY_SERVICES="${DEPLOY_SERVICES:-app-prod caddy}"
+_CADDY_PORT="${FONAREDD_CADDY_HTTP:-18080}"
+_APP_PORT="${FONAREDD_APP_PROD_PORT:-13001}"
+# Santé via Caddy (même chemin que le tunnel) ; surchargez APP_HEALTH_URL pour tester l’app directe
+APP_HEALTH_URL="${APP_HEALTH_URL:-http://127.0.0.1:${_CADDY_PORT}/}"
 APP_PROD_IMAGE="${APP_PROD_IMAGE:-fonaredd-app-prod:latest}"
 APP_PROD_ROLLBACK_TAG="${APP_PROD_ROLLBACK_TAG:-fonaredd-app-prod:rollback}"
 
@@ -40,7 +50,6 @@ BUILD_RETRY_DELAY="${BUILD_RETRY_DELAY:-15}"
 HEALTH_MAX_ATTEMPTS="${HEALTH_MAX_ATTEMPTS:-24}"
 HEALTH_RETRY_DELAY="${HEALTH_RETRY_DELAY:-5}"
 HEALTH_INITIAL_DELAY="${HEALTH_INITIAL_DELAY:-15}"
-MYSQL_READY_WAIT="${MYSQL_READY_WAIT:-25}"
 BUILD_NO_CACHE="${BUILD_NO_CACHE:-0}"
 
 export COMPOSE_PROJECT_NAME
@@ -109,7 +118,13 @@ trap 'log_line "[DEPLOY] Erreur — rollback"; rollback' ERR
 if [ -f "$ENV_FILE" ]; then
   chmod 600 "$ENV_FILE" 2>/dev/null || true
 else
-  log_line "[DEPLOY] ATTENTION: pas de fichier $ENV_FILE — les secrets Compose par défaut seront utilisés (non recommandé en production)"
+  log_line "[DEPLOY] ERREUR: fichier $ENV_FILE requis (DATABASE_URL, secrets, NEXTAUTH_URL)"
+  exit 1
+fi
+
+if [ -z "${DATABASE_URL:-}" ]; then
+  log_line "[DEPLOY] ERREUR: DATABASE_URL vide — renseignez-le dans $ENV_FILE (MySQL sur l’hôte)"
+  exit 1
 fi
 
 if [ "${GIT_PULL:-0}" = "1" ] && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
@@ -156,10 +171,6 @@ while [ "$attempt" -le "$BUILD_MAX_ATTEMPTS" ]; do
   attempt=$((attempt + 1))
 done
 
-log_line "[DEPLOY] Démarrage MySQL + attente (~${MYSQL_READY_WAIT}s)..."
-compose up -d mysql
-sleep "$MYSQL_READY_WAIT"
-
 log_line "[DEPLOY] Démarrage stack: $DEPLOY_SERVICES"
 compose up -d $DEPLOY_SERVICES
 
@@ -200,7 +211,6 @@ fi
 echo "$NEW_TAG" > "$CURRENT_FILE"
 log_line "[DEPLOY] Déploiement réussi. Tag: $NEW_TAG"
 
-# Optionnel : service cloudflared dans le même compose + profile tunnel
 if [ -n "${CLOUDFLARED_TUNNEL_TOKEN:-}" ]; then
   if "${COMPOSE_BIN[@]}" -f "$COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" --project-directory "$REPO_ROOT" config --services 2>/dev/null | grep -qx "cloudflared"; then
     log_line "[DEPLOY] Recréation cloudflared (profile tunnel)..."

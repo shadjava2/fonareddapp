@@ -43,28 +43,26 @@ Write-Host "🚀 Démarrage des services..." -ForegroundColor Yellow
 Write-Host "Choisissez le mode de lancement :"
 Write-Host "1) Développement (avec hot reload)"
 Write-Host "2) Production"
-Write-Host "3) Base de données uniquement"
+Write-Host "3) Redis uniquement (MySQL sur l'hôte — .env DATABASE_URL)"
 $choice = Read-Host "Votre choix (1-3)"
 
 switch ($choice) {
     "1" {
         Write-Host "🔧 Lancement en mode développement..." -ForegroundColor Green
-        docker-compose up -d app-dev mysql redis
+        docker-compose up -d app-dev redis
         Write-Host "✅ Application démarrée en mode développement" -ForegroundColor Green
-        Write-Host "📱 URL: http://localhost:3000" -ForegroundColor Cyan
+        Write-Host "📱 URL: http://localhost:13000 (FONAREDD_APP_DEV_PORT)" -ForegroundColor Cyan
     }
     "2" {
         Write-Host "🏭 Lancement en mode production..." -ForegroundColor Green
-        docker-compose up -d app-prod mysql redis nginx
+        docker-compose up -d app-prod caddy redis
         Write-Host "✅ Application démarrée en mode production" -ForegroundColor Green
-        Write-Host "📱 URL: http://localhost:3001" -ForegroundColor Cyan
+        Write-Host "📱 App: :13001 — Caddy: :18080" -ForegroundColor Cyan
     }
     "3" {
-        Write-Host "🗄️  Lancement de la base de données uniquement..." -ForegroundColor Green
-        docker-compose up -d mysql redis
-        Write-Host "✅ Base de données démarrée" -ForegroundColor Green
-        Write-Host "🗄️  MySQL: localhost:3306" -ForegroundColor Cyan
-        Write-Host "🔴 Redis: localhost:6379" -ForegroundColor Cyan
+        Write-Host "🔴 Lancement de Redis uniquement..." -ForegroundColor Green
+        docker-compose up -d redis
+        Write-Host "✅ Redis démarré (défaut port 16379)" -ForegroundColor Green
     }
     default {
         Write-Host "❌ Choix invalide" -ForegroundColor Red
@@ -86,16 +84,11 @@ Write-Host ""
 Write-Host "📋 Commandes utiles :" -ForegroundColor Yellow
 Write-Host "  docker-compose logs -f app-dev    # Voir les logs développement"
 Write-Host "  docker-compose logs -f app-prod   # Voir les logs production"
-Write-Host "  docker-compose logs -f mysql      # Voir les logs MySQL"
+Write-Host "  docker-compose logs -f caddy      # Voir les logs Caddy"
 Write-Host "  docker-compose down               # Arrêter tous les services"
 Write-Host "  docker-compose exec app-dev sh    # Accéder au shell de l'app"
 Write-Host ""
-Write-Host "🔧 Configuration de la base de données :" -ForegroundColor Yellow
-Write-Host "  Host: localhost"
-Write-Host "  Port: 3306"
-Write-Host "  Database: fonaredd_db"
-Write-Host "  Username: fonaredd_user"
-Write-Host "  Password: fonaredd_password"
+Write-Host "🔧 MySQL sur l'hôte : DATABASE_URL dans .env (ex. host.docker.internal:3306)" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "👤 Utilisateur par défaut :" -ForegroundColor Yellow
 Write-Host "  Username: admin"

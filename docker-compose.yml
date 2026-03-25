@@ -1,25 +1,13 @@
-version: "3.8"
+# Variables requises dans .env (racine du projet) : DATABASE_URL, JWT_SECRET, NEXTAUTH_URL, NEXTAUTH_SECRET
+# Ports hôte (conflits) — surchargez dans .env :
+#   FONAREDD_APP_DEV_PORT=13000  FONAREDD_APP_PROD_PORT=13001  FONAREDD_REDIS_PORT=16379
+#   FONAREDD_CADDY_HTTP=18080
+# Cloudflare Tunnel → http://127.0.0.1:${FONAREDD_CADDY_HTTP} (Caddy) ou directement app : ${FONAREDD_APP_PROD_PORT}
+#
+# MySQL : installé sur l’hôte ; dans DATABASE_URL utilisez host.docker.internal:3306
+# (extra_hosts host-gateway est défini sur les services app).
 
 services:
-  # Base de données MySQL
-  mysql:
-    image: mysql:8.0
-    container_name: fonaredd-mysql
-    restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: fonaredd_db
-      MYSQL_USER: fonaredd
-      MYSQL_PASSWORD: fonaredd123
-    ports:
-      - "3306:3306"
-    volumes:
-      - mysql_data:/var/lib/mysql
-      - ./docker/mysql/init:/docker-entrypoint-initdb.d
-    networks:
-      - fonaredd-network
-    command: --default-authentication-plugin=mysql_native_password
-
   # Application Next.js (développement)
   app-dev:
     build:
@@ -28,18 +16,18 @@ services:
     container_name: fonaredd-app-dev
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "${FONAREDD_APP_DEV_PORT:-13000}:3000"
     environment:
       - NODE_ENV=development
-      - DATABASE_URL=mysql://fonaredd:fonaredd123@mysql:3306/fonaredd_db
-      - JWT_SECRET=your_jwt_secret_key_here_very_long_and_secure
-      - NEXTAUTH_URL=http://localhost:3000
-      - NEXTAUTH_SECRET=your_nextauth_secret_here
+      - DATABASE_URL=${DATABASE_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - NEXTAUTH_URL=${NEXTAUTH_URL}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
     volumes:
       - .:/app
       - /app/node_modules
-    depends_on:
-      - mysql
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - fonaredd-network
 
@@ -52,48 +40,49 @@ services:
     container_name: fonaredd-app-prod
     restart: unless-stopped
     ports:
-      - "3001:3000"
+      - "${FONAREDD_APP_PROD_PORT:-13001}:3000"
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=mysql://fonaredd:fonaredd123@mysql:3306/fonaredd_db
-      - JWT_SECRET=your_jwt_secret_key_here_very_long_and_secure
-      - NEXTAUTH_URL=http://localhost:3001
-      - NEXTAUTH_SECRET=your_nextauth_secret_here
-    depends_on:
-      - mysql
+      - DATABASE_URL=${DATABASE_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - NEXTAUTH_URL=${NEXTAUTH_URL}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - fonaredd-network
 
-  # Redis pour le cache (optionnel)
-  redis:
-    image: redis:7-alpine
-    container_name: fonaredd-redis
+  # Reverse proxy (Cloudflare Tunnel → Caddy HTTP → app-prod)
+  caddy:
+    image: caddy:2-alpine
+    container_name: fonaredd-caddy
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "${FONAREDD_CADDY_HTTP:-18080}:80"
     volumes:
-      - redis_data:/data
-    networks:
-      - fonaredd-network
-
-  # Nginx reverse proxy (optionnel)
-  nginx:
-    image: nginx:alpine
-    container_name: fonaredd-nginx
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf
-      - ./docker/nginx/ssl:/etc/nginx/ssl
+      - ./docker/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
     depends_on:
       - app-prod
     networks:
       - fonaredd-network
 
+  # Redis (optionnel)
+  redis:
+    image: redis:7-alpine
+    container_name: fonaredd-redis
+    restart: unless-stopped
+    ports:
+      - "${FONAREDD_REDIS_PORT:-16379}:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - fonaredd-network
+
 volumes:
-  mysql_data:
+  caddy_data:
+  caddy_config:
   redis_data:
 
 networks:
