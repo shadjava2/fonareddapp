@@ -11,7 +11,7 @@
     "build": "next build",
     "build:prod": "next build",
     "build:electron": "next build && tsc -p electron/tsconfig.json",
-    "start": "next start -p 3001",
+    "start": "next start -H 0.0.0.0 -p 3001",
     "dist": "npm run build && electron-builder",
     "dist:dir": "npm run build && electron-builder --dir",
     "prisma:pull": "prisma db pull",
