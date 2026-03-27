@@ -56,8 +56,15 @@ export COMPOSE_PROJECT_NAME
 
 if docker compose version >/dev/null 2>&1; then
   COMPOSE_BIN=(docker compose)
-else
+elif command -v docker-compose >/dev/null 2>&1; then
   COMPOSE_BIN=(docker-compose)
+else
+  echo "[DEPLOY] ERREUR: Docker Compose introuvable (ni « docker compose », ni « docker-compose »)." >&2
+  echo "  Exemples d’installation sur Ubuntu/Debian :" >&2
+  echo "    curl -fsSL https://get.docker.com | sudo sh" >&2
+  echo "    # ou : sudo apt update && sudo apt install -y docker.io docker-compose-v2 docker-compose-plugin" >&2
+  echo "  Vérifiez : docker compose version" >&2
+  exit 1
 fi
 
 compose() {

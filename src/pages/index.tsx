@@ -10,6 +10,17 @@ const IndexPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [forgotUsername, setForgotUsername] = useState('');
+  const [forgotMail, setForgotMail] = useState('');
+  const [forgotOtp, setForgotOtp] = useState('');
+  const [forgotNewPassword, setForgotNewPassword] = useState('');
+  const [forgotNewPasswordConfirm, setForgotNewPasswordConfirm] = useState('');
+  const [forgotStep, setForgotStep] = useState<'request' | 'confirm' | 'done'>(
+    'request'
+  );
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotMessage, setForgotMessage] = useState<string | null>(null);
   const [errors, setErrors] = useState<{
     username?: string;
     password?: string;
@@ -119,6 +130,149 @@ const IndexPage: React.FC = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const openForgotModal = () => {
+    setForgotUsername(username.trim());
+    setForgotMail('');
+    setForgotOtp('');
+    setForgotNewPassword('');
+    setForgotNewPasswordConfirm('');
+    setForgotStep('request');
+    setForgotMessage(null);
+    setShowForgotModal(true);
+  };
+
+  const closeForgotModal = () => {
+    setShowForgotModal(false);
+    setForgotLoading(false);
+    setForgotMessage(null);
+    setForgotStep('request');
+    setForgotOtp('');
+    setForgotNewPassword('');
+    setForgotNewPasswordConfirm('');
+  };
+
+  const parseForgotAxError = (err: unknown): string => {
+    const ax = err as {
+      response?: { data?: { message?: string }; status?: number };
+    };
+    return (
+      ax.response?.data?.message ||
+      'Erreur réseau ou serveur. Réessayez plus tard ou contactez l’administrateur.'
+    );
+  };
+
+  const handleForgotSendOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotMessage(null);
+
+    const u = forgotUsername.trim();
+    if (u.length < 3) {
+      setForgotMessage(
+        "Le nom d'utilisateur doit contenir au moins 3 caractères."
+      );
+      return;
+    }
+    if (!forgotMail.trim()) {
+      setForgotMessage("L'adresse e-mail est requise.");
+      return;
+    }
+
+    setForgotLoading(true);
+    try {
+      const response = await apiPost<{
+        success: boolean;
+        message?: string;
+      }>('/api/auth/forgot-password/send-otp', {
+        username: u,
+        mail: forgotMail.trim(),
+      });
+
+      if (response.success) {
+        setForgotStep('confirm');
+        setForgotOtp('');
+        setForgotNewPassword('');
+        setForgotNewPasswordConfirm('');
+        setForgotMessage(null);
+        showToast({
+          type: 'success',
+          title: 'Code envoyé',
+          message:
+            response.message ||
+            'Consultez votre boîte e-mail pour le code à 6 chiffres.',
+        });
+      } else {
+        setForgotMessage(
+          response.message ||
+            "Impossible d'envoyer le code pour le moment."
+        );
+      }
+    } catch (err: unknown) {
+      console.error('forgot-password/send-otp:', err);
+      setForgotMessage(parseForgotAxError(err));
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  const handleForgotConfirm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotMessage(null);
+
+    const u = forgotUsername.trim();
+    const mail = forgotMail.trim();
+    const code = forgotOtp.trim().replace(/\s/g, '');
+
+    if (u.length < 3 || !mail) {
+      setForgotMessage('Complétez le nom d’utilisateur et l’e-mail.');
+      return;
+    }
+    if (!/^\d{6}$/.test(code)) {
+      setForgotMessage('Saisissez le code à 6 chiffres reçu par e-mail.');
+      return;
+    }
+    if (forgotNewPassword.length < 8) {
+      setForgotMessage('Le nouveau mot de passe doit contenir au moins 8 caractères.');
+      return;
+    }
+    if (forgotNewPassword !== forgotNewPasswordConfirm) {
+      setForgotMessage('Les deux mots de passe ne correspondent pas.');
+      return;
+    }
+
+    setForgotLoading(true);
+    try {
+      const response = await apiPost<{
+        success: boolean;
+        message?: string;
+      }>('/api/auth/forgot-password/confirm', {
+        username: u,
+        mail,
+        otp: code,
+        newPassword: forgotNewPassword,
+        newPasswordConfirm: forgotNewPasswordConfirm,
+      });
+
+      if (response.success) {
+        setForgotStep('done');
+        setForgotMessage(response.message ?? '');
+        showToast({
+          type: 'success',
+          title: 'Mot de passe mis à jour',
+          message: 'Vous pouvez vous connecter avec votre nouveau mot de passe.',
+        });
+      } else {
+        setForgotMessage(
+          response.message || 'La confirmation a échoué. Réessayez.'
+        );
+      }
+    } catch (err: unknown) {
+      console.error('forgot-password/confirm:', err);
+      setForgotMessage(parseForgotAxError(err));
+    } finally {
+      setForgotLoading(false);
     }
   };
 
@@ -338,6 +492,15 @@ const IndexPage: React.FC = () => {
                   {errors.password}
                 </div>
               )}
+              <div className="mt-2 flex justify-end">
+                <button
+                  type="button"
+                  onClick={openForgotModal}
+                  className="text-sm font-medium text-green-700 hover:text-green-900 underline-offset-2 hover:underline"
+                >
+                  Mot de passe oublié ?
+                </button>
+              </div>
             </div>
 
             {/* Bouton de connexion */}
@@ -394,6 +557,298 @@ const IndexPage: React.FC = () => {
           </form>
         </div>
 
+        {showForgotModal && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+            role="presentation"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) closeForgotModal();
+            }}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="forgot-password-title"
+              className="bg-white rounded-2xl shadow-xl border border-green-200 max-w-md w-full p-6 space-y-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <h3
+                  id="forgot-password-title"
+                  className="text-lg font-semibold text-gray-900"
+                >
+                  Mot de passe oublié
+                </h3>
+                <button
+                  type="button"
+                  onClick={closeForgotModal}
+                  className="text-gray-400 hover:text-gray-600 p-1 rounded-lg"
+                  aria-label="Fermer"
+                >
+                  <svg
+                    className="h-5 w-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+              {forgotStep === 'request' && (
+                <p className="text-sm text-gray-600">
+                  Indiquez votre nom d&apos;utilisateur et l&apos;e-mail associé
+                  au compte. Un code de confirmation à 6 chiffres sera envoyé
+                  par e-mail (valable 15 minutes). Sans e-mail enregistré,
+                  contactez un administrateur.
+                </p>
+              )}
+              {forgotStep === 'confirm' && (
+                <p className="text-sm text-gray-600">
+                  Saisissez le code reçu par e-mail puis choisissez votre nouveau
+                  mot de passe.
+                </p>
+              )}
+              {forgotStep === 'done' ? (
+                <div className="rounded-lg bg-green-50 border border-green-200 p-4 space-y-2">
+                  <p className="text-sm text-green-900">{forgotMessage}</p>
+                  <button
+                    type="button"
+                    onClick={closeForgotModal}
+                    className="w-full mt-2 py-2.5 rounded-lg text-sm font-medium text-white bg-green-600 hover:bg-green-700"
+                  >
+                    Fermer
+                  </button>
+                </div>
+              ) : forgotStep === 'confirm' ? (
+                <form className="space-y-4" onSubmit={handleForgotConfirm}>
+                  <div>
+                    <label
+                      htmlFor="forgot-username-ro"
+                      className="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                      Nom d&apos;utilisateur
+                    </label>
+                    <input
+                      id="forgot-username-ro"
+                      type="text"
+                      readOnly
+                      value={forgotUsername}
+                      className="block w-full px-3 py-2.5 border border-gray-200 rounded-lg bg-gray-50 text-gray-700"
+                    />
+                  </div>
+                  <div>
+                    <label
+                      htmlFor="forgot-mail-ro"
+                      className="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                      E-mail
+                    </label>
+                    <input
+                      id="forgot-mail-ro"
+                      type="email"
+                      readOnly
+                      value={forgotMail}
+                      className="block w-full px-3 py-2.5 border border-gray-200 rounded-lg bg-gray-50 text-gray-700"
+                    />
+                  </div>
+                  <div>
+                    <label
+                      htmlFor="forgot-otp"
+                      className="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                      Code à 6 chiffres
+                    </label>
+                    <input
+                      id="forgot-otp"
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={6}
+                      value={forgotOtp}
+                      onChange={(e) =>
+                        setForgotOtp(e.target.value.replace(/\D/g, '').slice(0, 6))
+                      }
+                      className="block w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent font-mono tracking-widest text-lg"
+                      placeholder="••••••"
+                    />
+                  </div>
+                  <div>
+                    <label
+                      htmlFor="forgot-new-pwd"
+                      className="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                      Nouveau mot de passe
+                    </label>
+                    <input
+                      id="forgot-new-pwd"
+                      type="password"
+                      autoComplete="new-password"
+                      value={forgotNewPassword}
+                      onChange={(e) => setForgotNewPassword(e.target.value)}
+                      className="block w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      minLength={8}
+                    />
+                  </div>
+                  <div>
+                    <label
+                      htmlFor="forgot-new-pwd2"
+                      className="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                      Confirmer le mot de passe
+                    </label>
+                    <input
+                      id="forgot-new-pwd2"
+                      type="password"
+                      autoComplete="new-password"
+                      value={forgotNewPasswordConfirm}
+                      onChange={(e) =>
+                        setForgotNewPasswordConfirm(e.target.value)
+                      }
+                      className="block w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      minLength={8}
+                    />
+                  </div>
+                  {forgotMessage && (
+                    <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+                      {forgotMessage}
+                    </div>
+                  )}
+                  <div className="flex flex-col sm:flex-row gap-3 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setForgotStep('request');
+                        setForgotMessage(null);
+                        setForgotOtp('');
+                        setForgotNewPassword('');
+                        setForgotNewPasswordConfirm('');
+                      }}
+                      className="flex-1 py-2.5 rounded-lg text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50"
+                    >
+                      Retour
+                    </button>
+                    <button
+                      type="button"
+                      disabled={forgotLoading}
+                      onClick={async () => {
+                        setForgotMessage(null);
+                        const u = forgotUsername.trim();
+                        const m = forgotMail.trim();
+                        if (u.length < 3 || !m) {
+                          setForgotMessage(
+                            'Identifiants incomplets pour renvoyer le code.'
+                          );
+                          return;
+                        }
+                        setForgotLoading(true);
+                        try {
+                          const response = await apiPost<{
+                            success: boolean;
+                            message?: string;
+                          }>('/api/auth/forgot-password/send-otp', {
+                            username: u,
+                            mail: m,
+                          });
+                          if (response.success) {
+                            showToast({
+                              type: 'success',
+                              title: 'Code renvoyé',
+                              message:
+                                response.message ||
+                                'Un nouveau code a été envoyé.',
+                            });
+                          } else {
+                            setForgotMessage(
+                              response.message || "Impossible d'envoyer le code."
+                            );
+                          }
+                        } catch (err: unknown) {
+                          setForgotMessage(parseForgotAxError(err));
+                        } finally {
+                          setForgotLoading(false);
+                        }
+                      }}
+                      className="flex-1 py-2.5 rounded-lg text-sm font-medium border border-green-600 text-green-700 hover:bg-green-50 disabled:opacity-50"
+                    >
+                      Renvoyer le code
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={forgotLoading}
+                      className="flex-1 py-2.5 rounded-lg text-sm font-medium text-white bg-green-600 hover:bg-green-700 disabled:opacity-50"
+                    >
+                      {forgotLoading ? 'Patientez…' : 'Confirmer'}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <form className="space-y-4" onSubmit={handleForgotSendOtp}>
+                  <div>
+                    <label
+                      htmlFor="forgot-username"
+                      className="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                      Nom d&apos;utilisateur
+                    </label>
+                    <input
+                      id="forgot-username"
+                      type="text"
+                      autoComplete="username"
+                      value={forgotUsername}
+                      onChange={(e) => setForgotUsername(e.target.value)}
+                      className="block w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label
+                      htmlFor="forgot-mail"
+                      className="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                      E-mail du compte
+                    </label>
+                    <input
+                      id="forgot-mail"
+                      type="email"
+                      autoComplete="email"
+                      value={forgotMail}
+                      onChange={(e) => setForgotMail(e.target.value)}
+                      className="block w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      placeholder="même adresse que dans votre profil"
+                    />
+                  </div>
+                  {forgotMessage && (
+                    <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+                      {forgotMessage}
+                    </div>
+                  )}
+                  <div className="flex gap-3 pt-1">
+                    <button
+                      type="button"
+                      onClick={closeForgotModal}
+                      className="flex-1 py-2.5 rounded-lg text-sm font-medium border border-gray-300 text-gray-700 hover:bg-gray-50"
+                    >
+                      Annuler
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={forgotLoading}
+                      className="flex-1 py-2.5 rounded-lg text-sm font-medium text-white bg-green-600 hover:bg-green-700 disabled:opacity-50"
+                    >
+                      {forgotLoading ? 'Envoi…' : 'Envoyer le code'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Signature */}
         <div className="text-center">
           <div className="bg-white/80 backdrop-blur-sm rounded-lg px-6 py-4 shadow-lg border border-green-200">
@@ -401,7 +856,7 @@ const IndexPage: React.FC = () => {
               <span className="font-medium text-green-700">Développé par</span>
             </p>
             <p className="text-lg font-bold text-green-800 mt-1">
-              Schadrack MPAKA MABI
+              KLIMS ets
             </p>
             <div className="mt-2 flex items-center justify-center space-x-2">
               <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>

@@ -35,6 +35,13 @@ echo NODE_ENV="production"
 echo.
 echo # Port de l'application
 echo PORT=3001
+echo.
+echo # SMTP ^(OTP reinitialisation mot de passe^) — Zoho : smtpproto.zoho.com
+echo EMAIL_SERVER_HOST="smtpproto.zoho.com"
+echo EMAIL_SERVER_PORT=587
+echo EMAIL_SERVER_USER="votre-email@votredomaine.com"
+echo EMAIL_SERVER_PASSWORD="votre-mot-de-passe-application"
+echo EMAIL_FROM="noreply@votredomaine.com"
 ) > .env.local
 
 echo ✓ Fichier .env.local cree avec succes

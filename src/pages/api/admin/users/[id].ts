@@ -1,5 +1,6 @@
 import { hashPassword } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { PROVISIONAL_RESET_PASSWORD_PLAIN } from '@/lib/provisional-password';
 import { NextApiRequest, NextApiResponse } from 'next';
 
 interface Data {
@@ -139,15 +140,14 @@ async function resetPassword(
       });
     }
 
-    // Mot de passe par défaut pour la réinitialisation
-    const tempPassword = '12345678';
-    const hashedPassword = await hashPassword(tempPassword);
+    const hashedPassword = await hashPassword(PROVISIONAL_RESET_PASSWORD_PLAIN);
 
     const user = await prisma.utilisateurs.update({
       where: { id: BigInt(id) },
       data: {
         mot_de_passe: hashedPassword,
-        initPassword: false, // Mettre à false (0) pour forcer l'utilisateur à changer
+        // false → côté client initPassword === 0 → écran de changement de mot de passe obligatoire
+        initPassword: false,
         userupdateid: BigInt(1),
       },
     });
@@ -160,7 +160,7 @@ async function resetPassword(
     return res.status(200).json({
       success: true,
       message: 'Mot de passe réinitialisé avec succès',
-      tempPassword: tempPassword, // Retourner le mot de passe temporaire
+      tempPassword: PROVISIONAL_RESET_PASSWORD_PLAIN,
       user: {
         id: user.id.toString(),
         username: user.username,

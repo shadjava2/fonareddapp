@@ -1,8 +1,10 @@
 import UserForm from '@/components/forms/UserForm';
 import AdminLayout from '@/components/layout/AdminLayout';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import SearchBar from '@/components/ui/SearchBar';
 import { useToast } from '@/hooks/useToast';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/fetcher';
+import { PROVISIONAL_RESET_PASSWORD_PLAIN } from '@/lib/provisional-password';
 import {
   ArrowPathIcon,
   PencilIcon,
@@ -10,7 +12,9 @@ import {
   TrashIcon,
   UserGroupIcon,
 } from '@heroicons/react/24/outline';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+
+const DEFAULT_RESET_PASSWORD = PROVISIONAL_RESET_PASSWORD_PLAIN;
 
 interface User {
   id: string;
@@ -62,6 +66,10 @@ const UsersPage: React.FC = () => {
   const [isResetting, setIsResetting] = useState(false);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [lastResetUsername, setLastResetUsername] = useState<string | null>(
+    null
+  );
   const [stats, setStats] = useState({
     total: 0,
     withRole: 0,
@@ -73,6 +81,31 @@ const UsersPage: React.FC = () => {
     fetchRoles();
     fetchFonctions();
   }, []);
+
+  const handleUserSearch = useCallback((query: string) => {
+    setUserSearchQuery(query);
+  }, []);
+
+  const filteredUsers = useMemo(() => {
+    const q = userSearchQuery.trim().toLowerCase();
+    if (!q) return users;
+    return users.filter((u) => {
+      const parts = [
+        u.id,
+        u.nom,
+        u.postnom,
+        u.prenom,
+        u.username,
+        u.mail,
+        u.phone,
+        u.role?.nom,
+        u.fonction?.nom,
+      ]
+        .filter((x) => x != null && String(x).length > 0)
+        .map((x) => String(x).toLowerCase());
+      return parts.some((p) => p.includes(q));
+    });
+  }, [users, userSearchQuery]);
 
   const fetchUsers = async () => {
     try {
@@ -255,6 +288,7 @@ const UsersPage: React.FC = () => {
 
   const handleConfirmResetPassword = async () => {
     if (!userToReset) return;
+    const usernameForModal = userToReset.username;
 
     try {
       setIsResetting(true);
@@ -267,9 +301,10 @@ const UsersPage: React.FC = () => {
       });
 
       if (response.success && response.tempPassword) {
+        setLastResetUsername(usernameForModal);
         setTempPassword(response.tempPassword);
         setShowPasswordModal(true);
-        showSuccess('Mot de passe réinitialisé avec succès');
+        showSuccess('Mot de passe réinitialisé (provisoire communiqué à l’utilisateur)');
         fetchUsers();
       } else {
         showError(response.message || 'Erreur lors de la réinitialisation');
@@ -318,12 +353,12 @@ const UsersPage: React.FC = () => {
     >
       <div className="space-y-6">
         {/* En-tête avec statistiques */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <UserGroupIcon className="h-8 w-8 text-blue-600 mr-3" />
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">
+        <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-center">
+              <UserGroupIcon className="mr-3 h-8 w-8 shrink-0 text-blue-600" />
+              <div className="min-w-0">
+                <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">
                   Utilisateurs
                 </h1>
                 <p className="text-sm text-gray-600">
@@ -333,9 +368,9 @@ const UsersPage: React.FC = () => {
             </div>
             <button
               onClick={handleOpenForm}
-              className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-200 shadow-sm"
+              className="flex w-full shrink-0 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-white shadow-sm transition hover:bg-blue-700 sm:w-auto"
             >
-              <PlusIcon className="h-5 w-5 mr-2" />
+              <PlusIcon className="h-5 w-5" />
               Ajouter un utilisateur
             </button>
           </div>
@@ -425,83 +460,109 @@ const UsersPage: React.FC = () => {
             </button>
           </div>
         ) : (
-          <div className="bg-white shadow rounded-lg overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
+          <>
+            <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+              <p className="mb-2 text-sm font-medium text-gray-700">
+                Recherche rapide
+              </p>
+              <SearchBar
+                onSearch={handleUserSearch}
+                placeholder="Nom, prénom, username, e-mail, téléphone, rôle, fonction, n° ID…"
+                loading={loading}
+              />
+              <p className="mt-2 text-xs text-gray-500">
+                {filteredUsers.length} affiché(s) sur {users.length} utilisateur(s)
+              </p>
+            </div>
+
+            {filteredUsers.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-8 text-center">
+                <UserGroupIcon className="mx-auto h-10 w-10 text-gray-400" />
+                <p className="mt-2 text-sm font-medium text-gray-900">
+                  Aucun utilisateur ne correspond à « {userSearchQuery.trim() || '…'} »
+                </p>
+                <p className="mt-1 text-sm text-gray-500">
+                  Modifiez ou effacez votre recherche pour voir toute la liste.
+                </p>
+              </div>
+            ) : (
+          <div className="max-w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow">
+            <div className="max-w-full overflow-x-auto overscroll-x-contain">
+              <table className="w-full min-w-[680px] divide-y divide-gray-200 text-sm lg:min-w-0">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="w-14 px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 sm:px-4">
                       ID
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="min-w-[10rem] px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 sm:px-4">
                       Nom Complet
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="min-w-[7rem] px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 sm:px-4">
                       Username
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="min-w-[8rem] px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 sm:px-4">
                       Email
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="min-w-[6rem] px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 sm:px-4">
                       Rôle
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="min-w-[6rem] px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 sm:px-4">
                       Fonction
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="min-w-[7rem] px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 sm:px-4">
                       Date de création
                     </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="w-28 px-3 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500 sm:px-4">
                       Actions
                     </th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {users.map((user) => (
+                <tbody className="divide-y divide-gray-200 bg-white">
+                  {filteredUsers.map((user) => (
                     <tr key={user.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
+                      <td className="whitespace-nowrap px-3 py-3 sm:px-4 sm:py-4">
+                        <div className="font-medium text-gray-900">
                           #{user.id}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
+                      <td className="px-3 py-3 sm:px-4 sm:py-4">
+                        <div className="break-words font-medium text-gray-900">
                           {user.nom} {user.postnom ? user.postnom + ' ' : ''}
                           {user.prenom || ''}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
+                      <td className="px-3 py-3 sm:px-4 sm:py-4">
+                        <div className="break-all font-medium text-gray-900">
                           {user.username}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
+                      <td className="px-3 py-3 sm:px-4 sm:py-4">
+                        <div className="break-all text-gray-900">
                           {user.mail || (
                             <span className="text-gray-400">N/A</span>
                           )}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
+                      <td className="px-3 py-3 sm:px-4 sm:py-4">
+                        <div className="break-words text-gray-900">
                           {user.role?.nom || (
-                            <span className="text-orange-600 font-medium">
+                            <span className="font-medium text-orange-600">
                               Non assigné
                             </span>
                           )}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
+                      <td className="px-3 py-3 sm:px-4 sm:py-4">
+                        <div className="break-words text-gray-900">
                           {user.fonction?.nom || (
-                            <span className="text-orange-600 font-medium">
+                            <span className="font-medium text-orange-600">
                               Non assigné
                             </span>
                           )}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
+                      <td className="whitespace-nowrap px-3 py-3 sm:px-4 sm:py-4">
+                        <div className="text-gray-900">
                           {new Date(user.datecreate).toLocaleDateString(
                             'fr-FR'
                           )}
@@ -512,8 +573,8 @@ const UsersPage: React.FC = () => {
                           )}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <div className="flex justify-end space-x-2">
+                      <td className="whitespace-nowrap px-3 py-3 text-right text-sm font-medium sm:px-4 sm:py-4">
+                        <div className="flex justify-end gap-1 sm:gap-2">
                           <button
                             onClick={() => handleEdit(user)}
                             className="text-indigo-600 hover:text-indigo-900 p-1 rounded"
@@ -524,7 +585,7 @@ const UsersPage: React.FC = () => {
                           <button
                             onClick={() => handleResetPassword(user)}
                             className="text-blue-600 hover:text-blue-900 p-1 rounded"
-                            title="Réinitialiser le mot de passe"
+                            title={`Mot de passe oublié : définir à ${DEFAULT_RESET_PASSWORD}`}
                           >
                             <ArrowPathIcon className="h-4 w-4" />
                           </button>
@@ -543,6 +604,8 @@ const UsersPage: React.FC = () => {
               </table>
             </div>
           </div>
+            )}
+          </>
         )}
 
         {/* Formulaire d'utilisateur */}
@@ -611,10 +674,10 @@ const UsersPage: React.FC = () => {
           isOpen={!!userToReset}
           onClose={() => setUserToReset(null)}
           onConfirm={handleConfirmResetPassword}
-          title="Réinitialiser le mot de passe"
-          message={`Êtes-vous sûr de vouloir réinitialiser le mot de passe de l'utilisateur "${userToReset?.nom} ${userToReset?.prenom || ''}" ? Un nouveau mot de passe temporaire sera généré et l'utilisateur devra le changer à la prochaine connexion.`}
+          title="Réinitialiser le mot de passe (oubli)"
+          message={`Réinitialiser le compte de « ${userToReset?.nom} ${userToReset?.prenom || ''} » (@${userToReset?.username}) ? Le mot de passe sera défini sur « ${DEFAULT_RESET_PASSWORD} ». À la prochaine connexion, l’utilisateur devra choisir un nouveau mot de passe.`}
           type="warning"
-          confirmText="Réinitialiser"
+          confirmText={`Oui, définir ${DEFAULT_RESET_PASSWORD}`}
           cancelText="Annuler"
           loading={isResetting}
         />
@@ -625,24 +688,22 @@ const UsersPage: React.FC = () => {
             <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
               <div className="mt-3">
                 <h3 className="text-lg font-medium text-gray-900 mb-4">
-                  Mot de passe temporaire généré
+                  Mot de passe réinitialisé
                 </h3>
                 <div className="space-y-4">
                   <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                     <p className="text-sm text-gray-700 mb-2">
-                      Un nouveau mot de passe temporaire a été généré pour{' '}
-                      <strong>{userToReset?.username}</strong>.
+                      Compte :{' '}
+                      <strong>{lastResetUsername || '—'}</strong>
                     </p>
                     <p className="text-sm font-semibold text-gray-900 mb-2">
-                      Mot de passe temporaire :
+                      Mot de passe provisoire (oubli) :
                     </p>
                     <div className="bg-white border border-gray-300 rounded-md p-3 font-mono text-lg text-center font-bold text-blue-600 select-all">
                       {tempPassword}
                     </div>
                     <p className="text-xs text-gray-600 mt-3">
-                      ⚠️ Notez ce mot de passe. Il ne sera pas affiché à
-                      nouveau. L'utilisateur devra le changer lors de sa
-                      prochaine connexion.
+                      Communiquez ce mot de passe à l’utilisateur. À la connexion, il devra en choisir un nouveau (écran de changement obligatoire).
                     </p>
                   </div>
                   <div className="flex justify-end">
@@ -650,6 +711,7 @@ const UsersPage: React.FC = () => {
                       onClick={() => {
                         setShowPasswordModal(false);
                         setTempPassword(null);
+                        setLastResetUsername(null);
                       }}
                       className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
                     >
