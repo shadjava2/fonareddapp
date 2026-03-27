@@ -118,3 +118,45 @@ export function handleApiError(error: any): ApiError {
     };
   }
 }
+
+/** Message lisible pour l’UI (timeouts, SMTP lent, proxy, corps non-JSON). */
+export function getAxiosErrorMessage(error: unknown): string {
+  if (!axios.isAxiosError(error)) {
+    if (error instanceof Error) return error.message;
+    return 'Erreur inconnue';
+  }
+
+  if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+    return 'Délai dépassé : le serveur met trop longtemps à répondre (souvent l’envoi e-mail ou la base de données). Réessayez dans un instant ou contactez l’administrateur.';
+  }
+
+  const status = error.response?.status;
+  const data = error.response?.data;
+
+  if (data && typeof data === 'object' && data !== null && 'message' in data) {
+    const m = (data as { message?: unknown }).message;
+    if (typeof m === 'string' && m.trim()) return m;
+  }
+
+  if (status === 503) {
+    return "Service temporairement indisponible (souvent : envoi d'e-mails / SMTP non configuré sur le serveur).";
+  }
+  if (status === 502) {
+    return "Le serveur n'a pas pu envoyer l'e-mail (erreur SMTP). Vérifiez la configuration ou réessayez plus tard.";
+  }
+  if (status === 504 || status === 408) {
+    return 'Délai dépassé côté serveur ou proxy.';
+  }
+  if (status === 429) {
+    return 'Trop de requêtes. Patientez avant de réessayer.';
+  }
+  if (status === 404) {
+    return 'API introuvable. Vérifiez que l’application est à jour et redéployée.';
+  }
+
+  if (error.request && !error.response) {
+    return 'Aucune réponse du serveur. Vérifiez la connexion réseau ou que l’application est démarrée.';
+  }
+
+  return error.message || 'Erreur réseau ou serveur. Réessayez plus tard.';
+}

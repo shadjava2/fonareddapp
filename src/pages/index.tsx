@@ -1,6 +1,6 @@
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/useToast';
-import { apiPost } from '@/lib/fetcher';
+import { apiPost, getAxiosErrorMessage } from '@/lib/fetcher';
 import Image from 'next/image';
 import { useRouter } from 'next/router';
 import React, { useState } from 'react';
@@ -154,16 +154,6 @@ const IndexPage: React.FC = () => {
     setForgotNewPasswordConfirm('');
   };
 
-  const parseForgotAxError = (err: unknown): string => {
-    const ax = err as {
-      response?: { data?: { message?: string }; status?: number };
-    };
-    return (
-      ax.response?.data?.message ||
-      'Erreur réseau ou serveur. Réessayez plus tard ou contactez l’administrateur.'
-    );
-  };
-
   const handleForgotSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setForgotMessage(null);
@@ -185,10 +175,14 @@ const IndexPage: React.FC = () => {
       const response = await apiPost<{
         success: boolean;
         message?: string;
-      }>('/api/auth/forgot-password/send-otp', {
-        username: u,
-        mail: forgotMail.trim(),
-      });
+      }>(
+        '/api/auth/forgot-password/send-otp',
+        {
+          username: u,
+          mail: forgotMail.trim(),
+        },
+        { timeout: 60000 }
+      );
 
       if (response.success) {
         setForgotStep('confirm');
@@ -211,7 +205,7 @@ const IndexPage: React.FC = () => {
       }
     } catch (err: unknown) {
       console.error('forgot-password/send-otp:', err);
-      setForgotMessage(parseForgotAxError(err));
+      setForgotMessage(getAxiosErrorMessage(err));
     } finally {
       setForgotLoading(false);
     }
@@ -247,13 +241,17 @@ const IndexPage: React.FC = () => {
       const response = await apiPost<{
         success: boolean;
         message?: string;
-      }>('/api/auth/forgot-password/confirm', {
-        username: u,
-        mail,
-        otp: code,
-        newPassword: forgotNewPassword,
-        newPasswordConfirm: forgotNewPasswordConfirm,
-      });
+      }>(
+        '/api/auth/forgot-password/confirm',
+        {
+          username: u,
+          mail,
+          otp: code,
+          newPassword: forgotNewPassword,
+          newPasswordConfirm: forgotNewPasswordConfirm,
+        },
+        { timeout: 30000 }
+      );
 
       if (response.success) {
         setForgotStep('done');
@@ -270,7 +268,7 @@ const IndexPage: React.FC = () => {
       }
     } catch (err: unknown) {
       console.error('forgot-password/confirm:', err);
-      setForgotMessage(parseForgotAxError(err));
+      setForgotMessage(getAxiosErrorMessage(err));
     } finally {
       setForgotLoading(false);
     }
@@ -751,10 +749,11 @@ const IndexPage: React.FC = () => {
                           const response = await apiPost<{
                             success: boolean;
                             message?: string;
-                          }>('/api/auth/forgot-password/send-otp', {
-                            username: u,
-                            mail: m,
-                          });
+                          }>(
+                            '/api/auth/forgot-password/send-otp',
+                            { username: u, mail: m },
+                            { timeout: 60000 }
+                          );
                           if (response.success) {
                             showToast({
                               type: 'success',
@@ -769,7 +768,7 @@ const IndexPage: React.FC = () => {
                             );
                           }
                         } catch (err: unknown) {
-                          setForgotMessage(parseForgotAxError(err));
+                          setForgotMessage(getAxiosErrorMessage(err));
                         } finally {
                           setForgotLoading(false);
                         }
