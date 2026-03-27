@@ -556,19 +556,12 @@ const IndexPage: React.FC = () => {
         </div>
 
         {showForgotModal && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
-            role="presentation"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) closeForgotModal();
-            }}
-          >
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
             <div
               role="dialog"
               aria-modal="true"
               aria-labelledby="forgot-password-title"
               className="bg-white rounded-2xl shadow-xl border border-green-200 max-w-md w-full p-6 space-y-4"
-              onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-start justify-between gap-4">
                 <h3

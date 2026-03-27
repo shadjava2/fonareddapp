@@ -27,14 +27,30 @@ model utilisateurs {
   userupdateid BigInt?  @db.UnsignedBigInt
 
   // Relations
-  fonction       fonctions?        @relation(fields: [fkFonction], references: [id])
-  role           roles?            @relation(fields: [fkRole], references: [id])
-  droitsServices droits_services[]
+  fonction              fonctions?               @relation(fields: [fkFonction], references: [id])
+  role                  roles?                   @relation(fields: [fkRole], references: [id])
+  droitsServices        droits_services[]
+  connexionHistoriques  ConnexionHistorique[]
 
   @@index([fkRole, id], map: "fkroleindexuser")
   @@index([fkFonction], map: "fkfonctionindexuser")
   @@index([username], map: "userunique")
   @@map("utilisateurs")
+}
+
+/// Journal des connexions réussies (sécurité compte utilisateur)
+model ConnexionHistorique {
+  id            BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  fkUtilisateur BigInt   @db.UnsignedBigInt
+  ipAddress     String?  @db.VarChar(45)
+  userAgent     String?  @db.VarChar(512)
+  datecreate    DateTime @default(now()) @db.Timestamp(0)
+
+  utilisateur utilisateurs @relation(fields: [fkUtilisateur], references: [id], onDelete: Cascade)
+
+  @@index([fkUtilisateur], map: "fk_connexion_user")
+  @@index([fkUtilisateur, datecreate], map: "idx_connexion_user_date")
+  @@map("connexion_historique")
 }
 
 model fonctions {

@@ -103,10 +103,22 @@ export default async function handler(
     } catch (err) {
       console.error('[forgot-password/send-otp] SMTP:', err);
       clearPendingReset(u, email);
+      const nodemailerErr = err as {
+        responseCode?: number;
+        response?: string;
+        code?: string;
+      };
+      const resp = String(nodemailerErr.response || '');
+      const is553 =
+        nodemailerErr.responseCode === 553 ||
+        resp.includes('553') ||
+        /sender.*not allowed|relay/i.test(resp);
+      const message = is553
+        ? "Zoho refuse l'adresse d'expédition (From). Mettez EMAIL_FROM sur la même adresse que EMAIL_SERVER_USER (ex. contact@fonaredd.com), ou créez l'alias « noreply » dans l'admin Zoho Mail."
+        : "L'e-mail n'a pas pu être envoyé. Vérifiez la configuration SMTP ou réessayez plus tard.";
       return res.status(502).json({
         success: false,
-        message:
-          "L'e-mail n'a pas pu être envoyé. Vérifiez la configuration SMTP ou réessayez plus tard.",
+        message,
       });
     }
 

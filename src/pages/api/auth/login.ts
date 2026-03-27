@@ -1,4 +1,5 @@
 import { authenticateUser, generateToken } from '@/lib/auth';
+import { recordSuccessfulLogin } from '@/lib/login-security';
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 interface LoginRequest {
@@ -75,6 +76,8 @@ export default async function handler(
       uid: userProfile.id,
       roleId: userProfile.fkRole || '0',
     });
+
+    await recordSuccessfulLogin(req, userProfile);
 
     return res.status(200).json({
       success: true,

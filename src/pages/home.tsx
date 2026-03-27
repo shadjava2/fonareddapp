@@ -2,12 +2,49 @@ import ForcePasswordModal from '@/components/auth/ForcePasswordModal';
 import AppShell from '@/components/layout/AppShell';
 import ModuleGrid from '@/components/layout/ModuleGrid';
 import { useAuth } from '@/hooks/useAuth';
+import { formatDateTimeFR } from '@/lib/formatDate';
+import { apiGet } from '@/lib/fetcher';
+import type { LoginHistoryEntry } from '@/lib/login-history-types';
 import { useRouter } from 'next/router';
-import React from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 const HomePage: React.FC = () => {
   const { user } = useAuth();
   const router = useRouter();
+  const [loginHistory, setLoginHistory] = useState<LoginHistoryEntry[] | null>(
+    null
+  );
+  const [historyError, setHistoryError] = useState<string | null>(null);
+
+  const loadLoginHistory = useCallback(async () => {
+    try {
+      const res = await apiGet<{
+        success: boolean;
+        entries?: LoginHistoryEntry[];
+        message?: string;
+      }>('/api/auth/login-history');
+      if (res.success && res.entries) {
+        setLoginHistory(res.entries);
+        setHistoryError(null);
+      } else {
+        setLoginHistory([]);
+        setHistoryError(res.message || 'Historique indisponible');
+      }
+    } catch {
+      setLoginHistory([]);
+      setHistoryError('Impossible de charger l’historique de connexion.');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (user) void loadLoginHistory();
+  }, [user, loadLoginHistory]);
+
+  const lastLoginLabel = useMemo(() => {
+    if (loginHistory === null) return '…';
+    if (loginHistory.length === 0) return '—';
+    return formatDateTimeFR(loginHistory[0].datecreate);
+  }, [loginHistory]);
 
   const handlePasswordSuccess = () => {
     router.reload(); // Recharger pour mettre à jour les données utilisateur
@@ -35,9 +72,113 @@ const HomePage: React.FC = () => {
             <div className="text-right">
               <div className="text-sm text-gray-500">Dernière connexion</div>
               <div className="text-sm font-medium text-gray-900">
-                {new Date().toLocaleDateString('fr-FR')}
+                {lastLoginLabel}
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Historique de connexion (sécurité compte) — en tête du contenu */}
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">
+                Historique de connexion
+              </h2>
+              <p className="text-sm text-gray-600 mt-0.5">
+                Vérifiez que seules vos connexions apparaissent ici. À chaque
+                connexion, un e-mail de détection peut être envoyé sur votre
+                adresse enregistrée si le serveur mail est configuré.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void loadLoginHistory()}
+              className="shrink-0 text-sm font-medium text-primary-600 hover:text-primary-800"
+            >
+              Actualiser
+            </button>
+          </div>
+          {historyError && (
+            <div className="px-6 py-3 bg-amber-50 text-amber-900 text-sm border-b border-amber-100">
+              {historyError}{' '}
+              <span className="text-amber-800">
+                (exécutez la migration Prisma <code className="text-xs">connexion_historique</code>{' '}
+                si la table est absente.)
+              </span>
+            </div>
+          )}
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th
+                    scope="col"
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  >
+                    Date et heure
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  >
+                    Adresse IP
+                  </th>
+                  <th
+                    scope="col"
+                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  >
+                    Navigateur / appareil
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {loginHistory === null ? (
+                  <tr>
+                    <td
+                      colSpan={3}
+                      className="px-6 py-8 text-center text-gray-500 text-sm"
+                    >
+                      Chargement…
+                    </td>
+                  </tr>
+                ) : loginHistory.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={3}
+                      className="px-6 py-8 text-center text-gray-500 text-sm"
+                    >
+                      Aucune connexion enregistrée pour le moment. Après votre
+                      prochaine connexion, les entrées apparaîtront ici.
+                    </td>
+                  </tr>
+                ) : (
+                  loginHistory.map((row) => (
+                    <tr key={row.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-900">
+                        {formatDateTimeFR(row.datecreate)}
+                      </td>
+                      <td className="px-6 py-3 text-sm text-gray-700 font-mono">
+                        {row.ipAddress || '—'}
+                      </td>
+                      <td
+                        className="px-6 py-3 text-sm text-gray-600 max-w-md truncate"
+                        title={row.userAgent || ''}
+                      >
+                        {row.userAgent || '—'}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="px-6 py-4 bg-green-50 border-t border-green-100">
+            <p className="text-sm text-green-900">
+              <strong className="font-semibold">Sécurité :</strong> si vous ne
+              reconnaissez pas une connexion, changez immédiatement votre mot de
+              passe et signalez-le à votre administrateur.
+            </p>
           </div>
         </div>
 
