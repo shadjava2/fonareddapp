@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { NextApiRequest } from 'next';
 import { prisma } from './prisma';
+import { ROLE_ID_FULL_ACCESS } from './role-constants';
 
 export interface JWTPayload {
   uid: string;
@@ -17,8 +18,86 @@ export interface UserProfile {
   phone: string | null;
   fkRole: any;
   initPassword: any;
+  /** Codes `permissions.nom` issus du rôle */
   permissions: string[];
-  services: any[];
+  /** Identifiants `services.id` issus de `droits_services` */
+  services: number[];
+  /** `roles.nom` si un rôle est associé */
+  roleNom: string | null;
+}
+
+/** Include Prisma pour charger droits rôle + services utilisateur */
+export const prismaUserAccessInclude = {
+  role: {
+    include: {
+      rolesPermissions: {
+        include: {
+          permission: { select: { nom: true } },
+        },
+      },
+    },
+  },
+  droitsServices: {
+    select: { fkService: true },
+  },
+} as const;
+
+type UserWithAccess = {
+  role: {
+    nom: string;
+    rolesPermissions: Array<{ permission: { nom: string } | null }>;
+  } | null;
+  droitsServices: Array<{ fkService: bigint | null }>;
+};
+
+export function collectAccessFromUser(user: UserWithAccess): {
+  permissions: string[];
+  services: number[];
+} {
+  const permissionSet = new Set<string>();
+  for (const rp of user.role?.rolesPermissions ?? []) {
+    const nom = rp.permission?.nom;
+    if (nom) permissionSet.add(nom);
+  }
+  const services: number[] = [];
+  for (const d of user.droitsServices ?? []) {
+    if (d.fkService != null) services.push(Number(d.fkService));
+  }
+  return { permissions: [...permissionSet], services };
+}
+
+function profilePayload(
+  user: UserWithAccess & {
+    id: bigint;
+    nom: string;
+    prenom: string | null;
+    username: string;
+    mail: string | null;
+    phone: string | null;
+    fkRole: bigint | null;
+    initPassword: boolean | null;
+  }
+): UserProfile {
+  let { permissions, services } = collectAccessFromUser(user);
+  if (
+    user.fkRole != null &&
+    user.fkRole === BigInt(ROLE_ID_FULL_ACCESS)
+  ) {
+    permissions = ['*'];
+  }
+  return {
+    id: user.id.toString(),
+    nom: user.nom,
+    prenom: user.prenom,
+    username: user.username,
+    mail: user.mail,
+    phone: user.phone,
+    fkRole: user.fkRole?.toString() || null,
+    initPassword: user.initPassword,
+    permissions,
+    services,
+    roleNom: user.role?.nom ?? null,
+  };
 }
 
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-key';
@@ -83,14 +162,7 @@ export async function authenticateUser(
 ): Promise<UserProfile | null> {
   const user = await prisma.utilisateurs.findFirst({
     where: { username },
-    include: {
-      role: {
-        include: {
-          rolesPermissions: true,
-        },
-      },
-      droitsServices: true,
-    },
+    include: prismaUserAccessInclude,
   });
 
   if (!user || user.locked) {
@@ -102,22 +174,7 @@ export async function authenticateUser(
     return null;
   }
 
-  // TEMPORAIRE: Accès libre à tous les services et permissions
-  let permissions: string[] = ['*']; // Toutes les permissions
-  const services: string[] = ['*']; // Tous les services
-
-  return {
-    id: user.id.toString(),
-    nom: user.nom,
-    prenom: user.prenom,
-    username: user.username,
-    mail: user.mail,
-    phone: user.phone,
-    fkRole: user.fkRole?.toString() || null,
-    initPassword: user.initPassword,
-    permissions,
-    services,
-  };
+  return profilePayload(user);
 }
 
 /**
@@ -133,36 +190,14 @@ export async function getUserFromToken(
 
   const user = await prisma.utilisateurs.findUnique({
     where: { id: BigInt(payload.uid) },
-    include: {
-      role: {
-        include: {
-          rolesPermissions: true,
-        },
-      },
-      droitsServices: true,
-    },
+    include: prismaUserAccessInclude,
   });
 
   if (!user || user.locked) {
     return null;
   }
 
-  // TEMPORAIRE: Accès libre à tous les services et permissions
-  let permissions: string[] = ['*']; // Toutes les permissions
-  const services: string[] = ['*']; // Tous les services
-
-  return {
-    id: user.id.toString(),
-    nom: user.nom,
-    prenom: user.prenom,
-    username: user.username,
-    mail: user.mail,
-    phone: user.phone,
-    fkRole: user.fkRole?.toString() || null,
-    initPassword: user.initPassword,
-    permissions,
-    services,
-  };
+  return profilePayload(user);
 }
 
 /**

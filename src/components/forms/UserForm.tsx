@@ -1,3 +1,4 @@
+import { PROVISIONAL_RESET_PASSWORD_PLAIN } from '@/lib/provisional-password';
 import React, { useEffect, useState } from 'react';
 
 interface UserFormData {
@@ -26,6 +27,8 @@ interface UserFormProps {
   initialData?: UserFormData;
   submitLabel?: string;
   onCancel: () => void;
+  /** En édition : ouvre le flux de réinit. (ex. dialogue parent) vers le mot de passe provisoire. */
+  onRequestResetPassword?: () => void;
   loading?: boolean;
   roles: Role[];
   fonctions?: Fonction[];
@@ -36,6 +39,7 @@ const UserForm: React.FC<UserFormProps> = ({
   initialData,
   submitLabel = 'Enregistrer',
   onCancel,
+  onRequestResetPassword,
   loading = false,
   roles = [],
   fonctions = [],
@@ -308,29 +312,44 @@ const UserForm: React.FC<UserFormProps> = ({
       </div>
 
       {/* Boutons */}
-      <div className="flex justify-end space-x-3">
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={loading}
-          className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-        >
-          Annuler
-        </button>
-        <button
-          type="submit"
-          disabled={loading}
-          className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-        >
-          {loading ? (
-            <div className="flex items-center">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-              Enregistrement...
-            </div>
-          ) : (
-            submitLabel
-          )}
-        </button>
+      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+        {onRequestResetPassword ? (
+          <button
+            type="button"
+            onClick={onRequestResetPassword}
+            disabled={loading}
+            title={`Définir le mot de passe provisoire sur « ${PROVISIONAL_RESET_PASSWORD_PLAIN} »`}
+            className="px-4 py-2 text-sm font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded-md hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 disabled:opacity-50 sm:mr-auto"
+          >
+            Réinitialiser le mot de passe
+          </button>
+        ) : (
+          <span className="hidden sm:block sm:flex-1" aria-hidden />
+        )}
+        <div className="flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={loading}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+          >
+            Annuler
+          </button>
+          <button
+            type="submit"
+            disabled={loading}
+            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+          >
+            {loading ? (
+              <div className="flex items-center">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                Enregistrement...
+              </div>
+            ) : (
+              submitLabel
+            )}
+          </button>
+        </div>
       </div>
     </form>
   );

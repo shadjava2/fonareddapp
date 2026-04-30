@@ -1,7 +1,7 @@
-import { PrismaClient } from '@prisma/client';
+import { requireApiPermissions } from '@/lib/api-auth';
+import { prisma } from '@/lib/prisma';
+import { API_ADMIN } from '@/lib/rbac';
 import type { NextApiRequest, NextApiResponse } from 'next';
-
-const prisma = new PrismaClient();
 
 type Data = {
   success: boolean;
@@ -14,6 +14,11 @@ export default async function handler(
   res: NextApiResponse<Data>
 ) {
   try {
+    const authUser = await requireApiPermissions(req, res, [
+      ...API_ADMIN.personnel,
+    ]);
+    if (!authUser) return;
+
     switch (req.method) {
       case 'GET':
         return await getConfigConge(req, res);
@@ -55,6 +60,7 @@ async function getConfigConge(req: NextApiRequest, res: NextApiResponse<Data>) {
     const configCongeMapped = {
       id: configConge.id.toString(),
       nbjourMois: configConge.nbjourMois,
+      congenonjustifie: configConge.congenonjustifie,
       datecreate: configConge.datecreate,
       dateupdate: configConge.dateupdate,
       usercreateid: configConge.usercreateid?.toString(),
@@ -85,7 +91,7 @@ async function createConfigConge(
   user: any = null
 ) {
   try {
-    const { nbjourMois } = req.body;
+    const { nbjourMois, congenonjustifie } = req.body;
 
     if (!nbjourMois || isNaN(parseFloat(nbjourMois))) {
       return res.status(400).json({
@@ -104,6 +110,23 @@ async function createConfigConge(
       });
     }
 
+    let nj: number | null = null;
+    if (
+      congenonjustifie !== undefined &&
+      congenonjustifie !== null &&
+      congenonjustifie !== ''
+    ) {
+      const parsed = parseFloat(String(congenonjustifie));
+      if (isNaN(parsed) || parsed < 0 || parsed > 366) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Le plafond jours non justifiés doit être un nombre entre 0 et 366',
+        });
+      }
+      nj = parsed;
+    }
+
     // Vérifier s'il existe déjà une configuration
     const existingConfig = await prisma.congeconfig.findFirst();
 
@@ -118,6 +141,7 @@ async function createConfigConge(
     const configConge = await prisma.congeconfig.create({
       data: {
         nbjourMois: nbjourMoisFloat,
+        ...(nj !== null ? { congenonjustifie: nj } : {}),
         usercreateid: user ? parseInt(user.id) : 1,
       },
     });
@@ -127,6 +151,7 @@ async function createConfigConge(
       configConge: {
         id: configConge.id.toString(),
         nbjourMois: configConge.nbjourMois,
+        congenonjustifie: configConge.congenonjustifie,
         datecreate: configConge.datecreate,
         dateupdate: configConge.dateupdate,
         usercreateid: configConge.usercreateid?.toString(),
@@ -151,7 +176,7 @@ async function updateConfigConge(
   user: any = null
 ) {
   try {
-    const { nbjourMois } = req.body;
+    const { nbjourMois, congenonjustifie } = req.body;
 
     if (!nbjourMois || isNaN(parseFloat(nbjourMois))) {
       return res.status(400).json({
@@ -170,6 +195,23 @@ async function updateConfigConge(
       });
     }
 
+    let nj: number | null = null;
+    if (
+      congenonjustifie !== undefined &&
+      congenonjustifie !== null &&
+      congenonjustifie !== ''
+    ) {
+      const parsed = parseFloat(String(congenonjustifie));
+      if (isNaN(parsed) || parsed < 0 || parsed > 366) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Le plafond jours non justifiés doit être un nombre entre 0 et 366',
+        });
+      }
+      nj = parsed;
+    }
+
     // Récupérer la configuration existante
     const existingConfig = await prisma.congeconfig.findFirst();
 
@@ -185,6 +227,7 @@ async function updateConfigConge(
       where: { id: existingConfig.id },
       data: {
         nbjourMois: nbjourMoisFloat,
+        ...(nj !== null ? { congenonjustifie: nj } : {}),
         userupdateid: user ? parseInt(user.id) : 1,
       },
     });
@@ -194,6 +237,7 @@ async function updateConfigConge(
       configConge: {
         id: configConge.id.toString(),
         nbjourMois: configConge.nbjourMois,
+        congenonjustifie: configConge.congenonjustifie,
         datecreate: configConge.datecreate,
         dateupdate: configConge.dateupdate,
         usercreateid: configConge.usercreateid?.toString(),

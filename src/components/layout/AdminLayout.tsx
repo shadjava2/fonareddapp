@@ -1,5 +1,8 @@
-import { useAuth } from '@/hooks/useAuth';
+import LogoutConfirmDialog from '@/components/auth/LogoutConfirmDialog';
+import { useAuth, usePermissions } from '@/hooks/useAuth';
+import { ADMIN_ZONE_PERMISSIONS } from '@/lib/rbac';
 import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
+import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import AdminSidebar from './AdminSidebar';
@@ -15,9 +18,24 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({
   title = 'Administration',
   description = "Gestion administrative de l'application",
 }) => {
-  const { user, logout } = useAuth();
+  const { user, loading } = useAuth();
+  const { hasAnyPermission } = usePermissions();
   const router = useRouter();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
+
+  const allowed = hasAnyPermission(ADMIN_ZONE_PERMISSIONS);
+
+  useEffect(() => {
+    if (loading) return;
+    if (!user) {
+      void router.replace('/');
+      return;
+    }
+    if (!allowed) {
+      void router.replace('/home');
+    }
+  }, [loading, user, allowed, router]);
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -32,22 +50,32 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({
     return () => window.removeEventListener('keydown', onKey);
   }, [mobileNavOpen]);
 
-  const handleLogout = async () => {
-    if (confirm('Êtes-vous sûr de vouloir vous déconnecter ?')) {
-      try {
-        await logout();
-        alert('Déconnexion réussie');
-        router.push('/');
-      } catch (error) {
-        console.error('Erreur lors de la déconnexion:', error);
-        alert('Erreur lors de la déconnexion');
-        router.push('/');
-      }
-    }
-  };
+  if (loading || !user || !allowed) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-gray-50 px-4">
+        <p className="text-sm text-gray-600">
+          {loading
+            ? 'Chargement de votre session…'
+            : 'Accès à l’administration refusé pour ce compte.'}
+        </p>
+        {!loading && !allowed && (
+          <Link
+            href="/home"
+            className="text-sm font-medium text-blue-600 hover:text-blue-800"
+          >
+            Retour au tableau de bord
+          </Link>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col lg:flex-row w-full max-w-[100vw] overflow-x-hidden">
+      <LogoutConfirmDialog
+        isOpen={logoutDialogOpen}
+        onClose={() => setLogoutDialogOpen(false)}
+      />
       {mobileNavOpen && (
         <button
           type="button"
@@ -109,7 +137,8 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({
                 </div>
               </div>
               <button
-                onClick={handleLogout}
+                type="button"
+                onClick={() => setLogoutDialogOpen(true)}
                 className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900"
               >
                 <svg
@@ -134,7 +163,8 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({
               {user?.username || 'N/A'} · {(user?.services || []).length} svc
             </span>
             <button
-              onClick={handleLogout}
+              type="button"
+              onClick={() => setLogoutDialogOpen(true)}
               className="text-xs font-medium text-blue-600 hover:text-blue-800"
             >
               Déconnexion

@@ -1,4 +1,6 @@
+import LogoutConfirmDialog from '@/components/auth/LogoutConfirmDialog';
 import {
+  ArrowRightOnRectangleIcon,
   BuildingOffice2Icon,
   ChartBarIcon,
   ClockIcon,
@@ -11,9 +13,11 @@ import {
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import { useState } from 'react';
 
 const PersonnelSidebar: React.FC = () => {
   const router = useRouter();
+  const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
 
   const navigation = [
     {
@@ -68,6 +72,10 @@ const PersonnelSidebar: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full">
+      <LogoutConfirmDialog
+        isOpen={logoutDialogOpen}
+        onClose={() => setLogoutDialogOpen(false)}
+      />
       {/* Logo/Header */}
       <div className="flex items-center px-6 py-4 border-b border-gray-200">
         <div className="flex items-center">
@@ -127,15 +135,11 @@ const PersonnelSidebar: React.FC = () => {
           </Link>
 
           <button
-            onClick={() => {
-              if (confirm('Êtes-vous sûr de vouloir vous déconnecter ?')) {
-                // Logique de déconnexion
-                window.location.href = '/';
-              }
-            }}
+            type="button"
+            onClick={() => setLogoutDialogOpen(true)}
             className="flex items-center w-full px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-200"
           >
-            <span className="mr-3">🚪</span>
+            <ArrowRightOnRectangleIcon className="mr-3 h-5 w-5 shrink-0 text-red-500" />
             Déconnexion
           </button>
         </div>

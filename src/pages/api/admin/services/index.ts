@@ -1,7 +1,7 @@
-import { PrismaClient } from '@prisma/client';
+import { requireApiPermissions } from '@/lib/api-auth';
+import { prisma } from '@/lib/prisma';
+import { API_ADMIN } from '@/lib/rbac';
 import type { NextApiRequest, NextApiResponse } from 'next';
-
-const prisma = new PrismaClient();
 
 type Data = {
   success: boolean;
@@ -15,10 +15,14 @@ export default async function handler(
   res: NextApiResponse<Data>
 ) {
   try {
+    const authUser = await requireApiPermissions(req, res, [
+      ...API_ADMIN.services,
+    ]);
+    if (!authUser) return;
+
     console.log('🔍 API Services - Méthode:', req.method);
     console.log('🔍 API Services - Headers:', req.headers);
 
-    // Mode développement : accès libre sans authentification
     switch (req.method) {
       case 'GET':
         return await getServices(req, res);

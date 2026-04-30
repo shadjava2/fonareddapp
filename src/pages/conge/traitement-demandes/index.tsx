@@ -34,6 +34,10 @@ interface DemandeConge {
   au?: string;
   nbrjour?: number;
   statut?: string;
+  section?: string;
+  nomsremplacant?: string;
+  idSuperviseur?: number;
+  superviseurNom?: string;
 }
 
 interface Phase {
@@ -46,6 +50,7 @@ const TraitementDemandesPage: React.FC = () => {
   const router = useRouter();
   const { showSuccess, showError } = useToast();
   const { user } = useAuth();
+  const isRole5Personnel = String(user?.fkRole ?? '') === '5';
 
   // Hook pour le loader d'action
   const {
@@ -88,7 +93,15 @@ const TraitementDemandesPage: React.FC = () => {
         setTraitements(
           response.traitements.map((traitement) => ({
             ...traitement,
-            id: parseInt(traitement.id.toString()),
+            id: Number.parseInt(traitement.id.toString(), 10),
+            fkDemande:
+              traitement.fkDemande !== undefined && traitement.fkDemande !== null
+                ? Number.parseInt(String(traitement.fkDemande), 10)
+                : undefined,
+            fkPhase:
+              traitement.fkPhase !== undefined && traitement.fkPhase !== null
+                ? Number.parseInt(String(traitement.fkPhase), 10)
+                : undefined,
           }))
         );
       } else {
@@ -114,12 +127,12 @@ const TraitementDemandesPage: React.FC = () => {
       const response = await apiGet<{
         success: boolean;
         demandes: DemandeConge[];
-      }>('/api/conge/demandes?limit=1000');
+      }>('/api/conge/demandes?assigned=true&limit=1000');
       if (response.success) {
         setDemandes(
           response.demandes.map((demande) => ({
             ...demande,
-            id: parseInt(demande.id.toString()),
+            id: Number.parseInt(demande.id.toString(), 10),
           }))
         );
       }
@@ -307,20 +320,61 @@ const TraitementDemandesPage: React.FC = () => {
   };
 
   const handleTraiter = useCallback(
-    (traitement: Traitement) => {
+    async (traitement: Traitement) => {
       startActionLoader(
         'Chargement du formulaire...',
-        'Préparation des données'
+        'Vérification des prérequis'
       );
 
-      // Petit délai pour afficher le loader avant d'ouvrir le formulaire
-      setTimeout(() => {
-        setEditingTraitement(traitement);
-        setShowForm(true);
-        stopActionLoader();
-      }, 150);
+      try {
+        // Bloquer explicitement les phases > 1 tant que le remplaçant (phase 1)
+        // n'a pas validé, en vérifiant sur tous les traitements de la demande.
+        if (traitement.fkDemande && (traitement.fkPhase || 0) > 1) {
+          const response = await apiGet<{
+            success: boolean;
+            traitements: Array<{
+              fkDemande?: number | string | null;
+              fkPhase?: number | string | null;
+              observations?: string | null;
+              approbation?: boolean | null;
+            }>;
+          }>(
+            `/api/conge/traitements-list?limit=1000&demandeId=${traitement.fkDemande}`
+          );
+
+          const allTraitements = response.success ? response.traitements || [] : [];
+          const remplacement = allTraitements.find(
+            (t) => Number.parseInt(String(t.fkPhase), 10) === 1
+          );
+          const remplacementValide =
+            !!remplacement?.observations && remplacement?.approbation === true;
+
+          if (!remplacementValide) {
+            stopActionLoader();
+            showError(
+              'Validation du remplaçant requise',
+              "Le remplaçant doit d'abord valider la demande avant de pouvoir traiter cette phase."
+            );
+            return;
+          }
+        }
+
+        // Petit délai pour afficher le loader avant d'ouvrir le formulaire
+        setTimeout(() => {
+          setEditingTraitement(traitement);
+          setShowForm(true);
+          stopActionLoader();
+        }, 150);
+      } catch {
+        // En cas d'erreur de vérification, laisser la validation métier serveur faire foi.
+        setTimeout(() => {
+          setEditingTraitement(traitement);
+          setShowForm(true);
+          stopActionLoader();
+        }, 150);
+      }
     },
-    [startActionLoader, stopActionLoader]
+    [showError, startActionLoader, stopActionLoader]
   );
 
   /**
@@ -348,10 +402,12 @@ const TraitementDemandesPage: React.FC = () => {
         const demandeResponse = await apiGet<{
           success: boolean;
           demandes: DemandeConge[];
-        }>(`/api/conge/demandes?limit=1000`);
+        }>(`/api/conge/demandes?assigned=true&limit=1000`);
 
         const demande = demandeResponse.demandes?.find(
-          (d) => d.id === traitement.fkDemande
+          (d) =>
+            Number.parseInt(String(d.id), 10) ===
+            Number.parseInt(String(traitement.fkDemande), 10)
         );
 
         if (!demande) {
@@ -390,7 +446,9 @@ const TraitementDemandesPage: React.FC = () => {
         const allTraitementsForDemande =
           allTraitementsData.success && allTraitementsData.traitements
             ? allTraitementsData.traitements.filter(
-                (t: any) => t.fkDemande === demande.id
+                (t: any) =>
+                  Number.parseInt(String(t.fkDemande), 10) ===
+                  Number.parseInt(String(demande.id), 10)
               )
             : traitements.filter((t) => t.fkDemande === traitement.fkDemande);
 
@@ -398,7 +456,7 @@ const TraitementDemandesPage: React.FC = () => {
         const traitementsByPhase = new Map<number, any>();
         allTraitementsForDemande.forEach((t: any) => {
           if (t.fkPhase) {
-            traitementsByPhase.set(t.fkPhase, t);
+            traitementsByPhase.set(Number.parseInt(String(t.fkPhase), 10), t);
           }
         });
 
@@ -726,6 +784,14 @@ const TraitementDemandesPage: React.FC = () => {
   const parseErrorMessage = (
     message: string
   ): { title: string; details: string } => {
+    if (message.toLowerCase().includes("remplaçant n'a pas encore validé")) {
+      return {
+        title: 'Validation du remplaçant requise',
+        details:
+          "Le remplaçant doit d'abord valider la demande avant de permettre le traitement par les autres phases.",
+      };
+    }
+
     // Détecter si c'est une phase inférieure qui bloque
     const phaseInferieureMatch = message.match(
       /La phase (\d+) doit être traitée avant de pouvoir traiter la phase (\d+)/
@@ -1107,6 +1173,9 @@ const TraitementDemandesPage: React.FC = () => {
                       PHASE
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      DEMANDEUR / REMPLACANT / SUPERVISEUR
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       OBSERVATIONS
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -1123,9 +1192,9 @@ const TraitementDemandesPage: React.FC = () => {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {loading && !traitements.length ? (
                     <>
-                      <TableRowSkeleton cols={6} />
-                      <TableRowSkeleton cols={6} />
-                      <TableRowSkeleton cols={6} />
+                      <TableRowSkeleton cols={7} />
+                      <TableRowSkeleton cols={7} />
+                      <TableRowSkeleton cols={7} />
                     </>
                   ) : (
                     filteredTraitements.map((traitement) => (
@@ -1139,6 +1208,38 @@ const TraitementDemandesPage: React.FC = () => {
                           <div className="text-sm text-gray-900">
                             {getPhaseLabelMemo(traitement.fkPhase)}
                           </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          {(() => {
+                            const demande = demandes.find(
+                              (d) => d.id === traitement.fkDemande
+                            );
+                            return (
+                              <div className="text-xs text-gray-700 space-y-1">
+                                <div>
+                                  <span className="font-semibold">
+                                    Demandeur:
+                                  </span>{' '}
+                                  {demande?.demandeur || 'N/A'}
+                                </div>
+                                <div>
+                                  <span className="font-semibold">
+                                    Remplaçant:
+                                  </span>{' '}
+                                  {demande?.nomsremplacant || 'N/A'}
+                                </div>
+                                <div>
+                                  <span className="font-semibold">
+                                    Superviseur:
+                                  </span>{' '}
+                                  {demande?.superviseurNom ||
+                                    (demande?.idSuperviseur
+                                      ? `ID ${demande.idSuperviseur}`
+                                      : 'N/A')}
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td className="px-6 py-4">
                           <div className="text-sm text-gray-900 max-w-xs truncate">
@@ -1291,7 +1392,7 @@ const TraitementDemandesPage: React.FC = () => {
                       }
                     : undefined
                 }
-                submitLabel="Traiter"
+                submitLabel={isRole5Personnel ? 'Traiter' : 'Valider'}
                 readOnly={false}
                 cancelLabel="Annuler"
                 onCancel={() => {
@@ -1307,6 +1408,9 @@ const TraitementDemandesPage: React.FC = () => {
                   id: p.id,
                   designation: p.designation || `Phase ${p.id}`,
                 }))}
+                canEditConformite={isRole5Personnel}
+                canEditApprobation={true}
+                approbationLabel="Valider"
               />
             </div>
 

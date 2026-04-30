@@ -1,4 +1,6 @@
+import { requireApiPermissions } from '@/lib/api-auth';
 import { prisma } from '@/lib/prisma';
+import { API_ADMIN } from '@/lib/rbac';
 import { NextApiRequest, NextApiResponse } from 'next';
 
 interface Data {
@@ -19,6 +21,11 @@ export default async function handler(
   }
 
   try {
+    const authUser = await requireApiPermissions(req, res, [
+      ...API_ADMIN.personnel,
+    ]);
+    if (!authUser) return;
+
     console.log('🔍 Récupération de tous les soldes de congé...');
 
     const soldes = await prisma.congesolde.findMany({

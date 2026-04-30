@@ -222,8 +222,10 @@ const HomePage: React.FC = () => {
                     <dt className="text-sm font-medium text-gray-500 truncate">
                       Rôle
                     </dt>
-                    <dd className="text-lg font-medium text-gray-900">
-                      ID {user?.fkRole || 'N/A'}
+                    <dd className="text-lg font-medium text-gray-900 truncate" title={user?.roleNom || undefined}>
+                      {user?.roleNom?.trim()
+                        ? user.roleNom
+                        : 'Sans rôle assigné'}
                     </dd>
                   </dl>
                 </div>

@@ -1,7 +1,5 @@
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
 import type { NextApiRequest, NextApiResponse } from 'next';
-
-const prisma = new PrismaClient();
 
 type Data = {
   success: boolean;

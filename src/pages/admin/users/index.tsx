@@ -646,6 +646,11 @@ const UsersPage: React.FC = () => {
                           }
                         : undefined
                     }
+                    onRequestResetPassword={
+                      editingUser
+                        ? () => setUserToReset(editingUser)
+                        : undefined
+                    }
                     roles={roles}
                     fonctions={fonctions}
                     onCancel={handleCancel}

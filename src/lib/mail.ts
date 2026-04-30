@@ -5,6 +5,20 @@ import type { Attachment } from 'nodemailer/lib/mailer';
 
 const LOGO_CONTENT_ID = 'fonaredd-logo@fonaredd';
 
+/**
+ * Mise en valeur du logo (fond clair + cadre) — compatible clients mail (tables).
+ */
+function wrapEmailLogoSpotlight(innerHtml: string): string {
+  return `
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 auto 18px auto;">
+  <tr>
+    <td align="center" style="padding:20px 22px;background:#f1f5f9;border-radius:16px;border:1px solid #e2e8f0;box-shadow:0 4px 24px rgba(15,23,42,0.08),inset 0 1px 0 #ffffff;">
+      ${innerHtml.trim()}
+    </td>
+  </tr>
+</table>`;
+}
+
 function escapeHtml(s: string): string {
   return s
     .replaceAll('&', '&amp;')
@@ -22,7 +36,7 @@ function getPublicSiteBase(): string {
 }
 
 const LOGO_IMG_STYLE =
-  'display:block;margin:0 auto 18px;max-width:220px;width:100%;height:auto;border:0;';
+  'display:block;margin:0 auto;max-width:280px;width:100%;height:auto;border:0;-ms-interpolation-mode:bicubic;';
 
 /** Logo e-mail : `public/logo.png` (recommandé), puis SVG, puis URL publique, puis texte. */
 export function getTransactionalEmailBranding(): {
@@ -41,9 +55,9 @@ export function getTransactionalEmailBranding(): {
           contentDisposition: 'inline',
         },
       ],
-      headerBlock: `
-        <img src="cid:${LOGO_CONTENT_ID}" alt="Fond National REDD — Fonaredd" width="220"
-          style="${LOGO_IMG_STYLE}" />`,
+      headerBlock: wrapEmailLogoSpotlight(`
+        <img src="cid:${LOGO_CONTENT_ID}" alt="Fond National REDD — Fonaredd" width="280"
+          style="${LOGO_IMG_STYLE}" />`),
     };
   }
 
@@ -58,9 +72,9 @@ export function getTransactionalEmailBranding(): {
           contentDisposition: 'inline',
         },
       ],
-      headerBlock: `
-        <img src="cid:${LOGO_CONTENT_ID}" alt="Fonaredd" width="64" height="64"
-          style="display:block;margin:0 auto 16px;border-radius:14px;border:2px solid rgba(255,255,255,0.35);" />`,
+      headerBlock: wrapEmailLogoSpotlight(`
+        <img src="cid:${LOGO_CONTENT_ID}" alt="Fonaredd" width="88" height="88"
+          style="display:block;margin:0 auto;max-width:88px;height:auto;border-radius:16px;border:1px solid #cbd5e1;box-shadow:0 2px 8px rgba(15,23,42,0.06);" />`),
     };
   }
 
@@ -69,18 +83,21 @@ export function getTransactionalEmailBranding(): {
     const srcPng = `${base}/logo.png`;
     return {
       attachments: [],
-      headerBlock: `
-        <img src="${srcPng}" alt="Fond National REDD — Fonaredd" width="220"
-          style="${LOGO_IMG_STYLE}" />`,
+      headerBlock: wrapEmailLogoSpotlight(`
+        <img src="${escapeHtml(srcPng)}" alt="Fond National REDD — Fonaredd" width="280"
+          style="${LOGO_IMG_STYLE}" />`),
     };
   }
 
   return {
     attachments: [],
-    headerBlock: `
-      <div style="font-size:24px;font-weight:800;color:#ffffff;letter-spacing:0.12em;margin:0 auto 12px;text-shadow:0 1px 2px rgba(0,0,0,0.15);">
+    headerBlock: wrapEmailLogoSpotlight(`
+      <div style="font-size:22px;font-weight:800;color:#0f172a;letter-spacing:0.14em;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
         FONAREDD
-      </div>`,
+      </div>
+      <p style="margin:8px 0 0;color:#64748b;font-size:11px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;">
+        Fond National REDD
+      </p>`),
   };
 }
 
@@ -100,7 +117,7 @@ function buildPasswordResetOtpHtml(otp: string, headerBlock: string): string {
       <td align="center">
         <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:520px;">
           <tr>
-            <td align="center" style="padding-bottom:8px;">
+            <td align="center" style="padding-bottom:4px;">
               ${headerBlock}
               <h1 style="margin:0;color:#ffffff;font-size:21px;font-weight:700;line-height:1.25;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
                 Fond National REDD
@@ -190,7 +207,7 @@ function buildLoginNotificationHtml(
       <td align="center">
         <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:520px;">
           <tr>
-            <td align="center" style="padding-bottom:8px;">
+            <td align="center" style="padding-bottom:4px;">
               ${headerBlock}
               <h1 style="margin:0;color:#ffffff;font-size:21px;font-weight:700;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
                 Alerte de sécurité
@@ -331,6 +348,9 @@ export function createMailTransport() {
       user: process.env.EMAIL_SERVER_USER!.trim(),
       pass: process.env.EMAIL_SERVER_PASSWORD,
     },
+    connectionTimeout: 120_000,
+    greetingTimeout: 45_000,
+    socketTimeout: 120_000,
   });
 }
 

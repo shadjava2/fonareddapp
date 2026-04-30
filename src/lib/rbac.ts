@@ -1,233 +1,281 @@
 import { UserProfile } from './auth';
 
-/**
- * Vérifie si un utilisateur a une permission spécifique
- */
+/** Super-pouvoir uniquement si présent explicitement en base sur le rôle */
+function isAllAccess(permissions: string[]): boolean {
+  return permissions.includes('*') || permissions.includes('ALL_ACCESS');
+}
+
 export function hasPermission(
   user: UserProfile | null,
   permissionCode: string
 ): boolean {
-  // Mode développement : accès libre à tous les modules
-  return true;
+  if (!user) return false;
+  const p = user.permissions ?? [];
+  if (isAllAccess(p)) return true;
+  return p.includes(permissionCode);
 }
 
-/**
- * Vérifie si un utilisateur a un rôle spécifique (par ID)
- */
 export function hasRole(user: UserProfile | null, roleId: number): boolean {
   if (!user) return false;
-  const userRole = (user as any).fkRole;
-  if (userRole === null || userRole === undefined) return false;
-  return String(userRole) === String(roleId);
+  if (user.fkRole == null) return false;
+  return String(user.fkRole) === String(roleId);
 }
 
-/**
- * Vérifie si un utilisateur a accès à un service spécifique
- */
 export function hasServiceAccess(
   user: UserProfile | null,
   serviceId: number
 ): boolean {
-  // Mode développement : accès libre à tous les services
-  return true;
+  if (!user) return false;
+  const p = user.permissions ?? [];
+  if (isAllAccess(p)) return true;
+  const ids = user.services ?? [];
+  return ids.includes(serviceId);
 }
 
-/**
- * Vérifie si un utilisateur a au moins une des permissions spécifiées
- */
 export function hasAnyPermission(
   user: UserProfile | null,
   permissions: string[]
 ): boolean {
-  // Mode développement : accès libre à tous les modules
-  return true;
+  if (!user) return false;
+  const p = user.permissions ?? [];
+  if (isAllAccess(p)) return true;
+  return permissions.some((code) => p.includes(code));
 }
 
-/**
- * Vérifie si un utilisateur a toutes les permissions spécifiées
- */
 export function hasAllPermissions(
   user: UserProfile | null,
   permissions: string[]
 ): boolean {
-  // Mode développement : accès libre à tous les modules
-  return true;
+  if (!user) return false;
+  const p = user.permissions ?? [];
+  if (isAllAccess(p)) return true;
+  return permissions.every((code) => p.includes(code));
 }
 
-/**
- * Vérifie si un utilisateur est administrateur (rôle ID 1 par convention)
- */
 export function isAdmin(user: UserProfile | null): boolean {
   return hasRole(user, 1);
 }
 
-/**
- * Vérifie si un utilisateur peut gérer les utilisateurs
- */
 export function canManageUsers(user: UserProfile | null): boolean {
-  // Mode développement : accès libre
-  return true;
+  return hasAnyPermission(user, [
+    PERMISSIONS.USER_MANAGE,
+    PERMISSIONS.MODULE_ADMIN,
+  ]);
 }
 
-/**
- * Vérifie si un utilisateur peut gérer les rôles
- */
 export function canManageRoles(user: UserProfile | null): boolean {
-  // Mode développement : accès libre
-  return true;
+  return hasAnyPermission(user, [
+    PERMISSIONS.ROLE_MANAGE,
+    PERMISSIONS.MODULE_ADMIN,
+  ]);
 }
 
-/**
- * Vérifie si un utilisateur peut gérer les services
- */
 export function canManageServices(user: UserProfile | null): boolean {
-  // Mode développement : accès libre
-  return true;
+  return hasAnyPermission(user, [
+    PERMISSIONS.SERVICE_MANAGE,
+    PERMISSIONS.MODULE_ADMIN,
+  ]);
 }
 
-/**
- * Vérifie si un utilisateur peut voir les services
- */
 export function canViewServices(user: UserProfile | null): boolean {
-  // Mode développement : accès libre
-  return true;
+  return canManageServices(user);
 }
 
-/**
- * Vérifie si un utilisateur peut créer des services
- */
 export function canCreateServices(user: UserProfile | null): boolean {
-  // Mode développement : accès libre
-  return true;
+  return canManageServices(user);
 }
 
-/**
- * Vérifie si un utilisateur peut modifier des services
- */
 export function canEditServices(user: UserProfile | null): boolean {
-  // Mode développement : accès libre
-  return true;
+  return canManageServices(user);
 }
 
-/**
- * Vérifie si un utilisateur peut gérer les sites
- */
 export function canManageSites(user: UserProfile | null): boolean {
-  // Mode développement : accès libre
-  return true;
+  return hasAnyPermission(user, [
+    PERMISSIONS.SITE_MANAGE,
+    PERMISSIONS.MODULE_ADMIN,
+    PERMISSIONS.ITEM_SITES,
+  ]);
 }
 
-/**
- * Vérifie si un utilisateur peut voir les sites
- */
 export function canViewSites(user: UserProfile | null): boolean {
-  // Mode développement : accès libre
-  return true;
+  return canManageSites(user);
 }
 
-/**
- * Vérifie si un utilisateur peut enregistrer des sites
- */
 export function canCreateSites(user: UserProfile | null): boolean {
-  // Mode développement : accès libre
-  return true;
+  return hasAnyPermission(user, [
+    PERMISSIONS.SITES_ENREGISTRER,
+    PERMISSIONS.SITE_MANAGE,
+    PERMISSIONS.MODULE_ADMIN,
+  ]);
 }
 
-/**
- * Vérifie si un utilisateur peut modifier des sites
- */
 export function canEditSites(user: UserProfile | null): boolean {
-  // Mode développement : accès libre
-  return true;
+  return hasAnyPermission(user, [
+    PERMISSIONS.SITES_MODIFIER,
+    PERMISSIONS.SITE_MANAGE,
+    PERMISSIONS.MODULE_ADMIN,
+  ]);
 }
 
-/**
- * Vérifie si un utilisateur peut gérer les congés
- */
 export function canManageConges(user: UserProfile | null): boolean {
-  // Mode développement : accès libre
-  return true;
+  return hasAnyPermission(user, [
+    PERMISSIONS.MODULE_CONGE,
+    PERMISSIONS.MODULE_ADMIN,
+  ]);
 }
 
-/**
- * Vérifie si un utilisateur peut demander des congés
- */
 export function canRequestConges(user: UserProfile | null): boolean {
-  // Mode développement : accès libre
-  return true;
+  return hasAnyPermission(user, [
+    PERMISSIONS.MODULE_CONGE,
+    PERMISSIONS.CONGE_REQUEST,
+    PERMISSIONS.MODULE_ADMIN,
+  ]);
 }
 
-/**
- * Vérifie si un utilisateur peut gérer le calendrier
- */
 export function canManageCalendar(user: UserProfile | null): boolean {
-  // Mode développement : accès libre
-  return true;
+  return hasAnyPermission(user, [
+    PERMISSIONS.MODULE_CONGE,
+    PERMISSIONS.CALENDAR_MANAGE,
+    PERMISSIONS.MODULE_ADMIN,
+  ]);
 }
 
-/**
- * Permissions communes pour les modules
- */
+export function canManageCongeReturns(user: UserProfile | null): boolean {
+  return hasAnyPermission(user, [
+    PERMISSIONS.MODULE_CONGE,
+    PERMISSIONS.CONGE_RETURN,
+    PERMISSIONS.MODULE_ADMIN,
+  ]);
+}
+
 export const PERMISSIONS = {
-  // Administration
+  MODULE_ADMIN: 'MODULE_ADMIN',
+  MODULE_CONGE: 'MODULE_CONGE',
+  MODULE_PERSONNEL: 'MODULE_PERSONNEL',
+
   USER_MANAGE: 'USER_MANAGE',
   ROLE_MANAGE: 'ROLE_MANAGE',
   SERVICE_MANAGE: 'SERVICE_MANAGE',
   SITE_MANAGE: 'SITE_MANAGE',
 
-  // Sites - Permissions spécifiques
   ITEM_SITES: 'ITEM_SITES',
   SITES_ENREGISTRER: 'SITES_ENREGISTRER',
   SITES_MODIFIER: 'SITES_MODIFIER',
 
-  // Congés
   CONGE_MANAGE: 'CONGE_MANAGE',
+  CONGE_DASHBOARD: 'CONGE_DASHBOARD',
+  CONGE_CONFIG: 'CONGE_CONFIG',
+  CONGE_NON_JUSTIFIE: 'CONGE_NON_JUSTIFIE',
+  CONGE_TRAITEMENT: 'CONGE_TRAITEMENT',
+  CONGE_TYPES: 'CONGE_TYPES',
+  CONGE_NOTIFICATIONS: 'CONGE_NOTIFICATIONS',
   CONGE_REQUEST: 'CONGE_REQUEST',
+  CONGE_RETURN: 'CONGE_RETURN',
+  CONGE_DEMANDES_ALL: 'CONGE_DEMANDES_ALL',
   CALENDAR_MANAGE: 'CALENDAR_MANAGE',
 
-  // Présence (pour future extension)
   PRESENCE_MANAGE: 'PRESENCE_MANAGE',
   PRESENCE_VIEW: 'PRESENCE_VIEW',
 } as const;
 
-/**
- * Modules disponibles avec leurs permissions requises
- */
 export const MODULES = {
   ADMIN: {
     name: 'Administration',
-    // Permission d'accès au module Administration
-    // Aligné sur la table permissions.nom = 'MODULE_ADMIN'
-    permission: 'MODULE_ADMIN',
+    permission: PERMISSIONS.MODULE_ADMIN,
     icon: 'Cog6ToothIcon',
     description: 'Gestion des utilisateurs, rôles et permissions',
     color: 'bg-primary-500',
   },
   CONGE: {
     name: 'Gestion Congé',
-    // Permission générique lecture/accès congé (ajuste si tu as un code dédié)
-    permission: PERMISSIONS.CONGE_REQUEST,
+    permission: PERMISSIONS.MODULE_CONGE,
     icon: 'CalendarDaysIcon',
     description: 'Demandes de congés et calendrier',
     color: 'bg-blue-500',
   },
   PRESENCE: {
     name: 'Gestion Personnel',
-    // Permission d'accès au module Personnel
-    // Aligné sur la table permissions.nom = 'MODULE_PERSONNEL'
-    permission: 'MODULE_PERSONNEL',
+    permission: PERMISSIONS.MODULE_PERSONNEL,
     icon: 'ClockIcon',
     description: 'Gestion du personnel et présences',
     color: 'bg-green-500',
   },
 } as const;
 
-/**
- * Filtre les modules accessibles pour un utilisateur
- */
+const CONGE_MODULE_CODES = [
+  PERMISSIONS.MODULE_CONGE,
+  PERMISSIONS.CONGE_DASHBOARD,
+  PERMISSIONS.CONGE_CONFIG,
+  PERMISSIONS.CONGE_NON_JUSTIFIE,
+  PERMISSIONS.CONGE_TRAITEMENT,
+  PERMISSIONS.CONGE_TYPES,
+  PERMISSIONS.CONGE_NOTIFICATIONS,
+  PERMISSIONS.CONGE_REQUEST,
+  PERMISSIONS.CONGE_RETURN,
+  PERMISSIONS.CALENDAR_MANAGE,
+  PERMISSIONS.MODULE_ADMIN,
+] as const;
+
+/** Accès à l’espace administration (sidebar verte /admin) */
+export const ADMIN_ZONE_PERMISSIONS: string[] = [
+  PERMISSIONS.MODULE_ADMIN,
+  PERMISSIONS.USER_MANAGE,
+  PERMISSIONS.ROLE_MANAGE,
+  PERMISSIONS.SERVICE_MANAGE,
+  PERMISSIONS.SITE_MANAGE,
+  PERMISSIONS.ITEM_SITES,
+];
+
+/** Accès au module Congé (routes /conge) */
+export function canAccessCongeModule(user: UserProfile | null): boolean {
+  return hasAnyPermission(user, [...CONGE_MODULE_CODES]);
+}
+
 export function getAccessibleModules(
   user: UserProfile | null
 ): Array<(typeof MODULES)[keyof typeof MODULES]> {
-  // Mode développement : accès libre à tous les modules
-  return Object.values(MODULES);
+  const list: Array<(typeof MODULES)[keyof typeof MODULES]> = [];
+  if (hasPermission(user, MODULES.ADMIN.permission)) {
+    list.push(MODULES.ADMIN);
+  }
+  if (hasAnyPermission(user, [...CONGE_MODULE_CODES])) {
+    list.push(MODULES.CONGE);
+  }
+  if (hasPermission(user, MODULES.PRESENCE.permission)) {
+    list.push(MODULES.PRESENCE);
+  }
+  return list;
 }
+
+/** Permissions attendues par les handlers `/api/admin/*` */
+export const API_ADMIN = {
+  users: [PERMISSIONS.USER_MANAGE, PERMISSIONS.MODULE_ADMIN],
+  roles: [PERMISSIONS.ROLE_MANAGE, PERMISSIONS.MODULE_ADMIN],
+  rolesId: [PERMISSIONS.ROLE_MANAGE, PERMISSIONS.MODULE_ADMIN],
+  rolesPermissions: [PERMISSIONS.ROLE_MANAGE, PERMISSIONS.MODULE_ADMIN],
+  rolesPermissionsId: [PERMISSIONS.ROLE_MANAGE, PERMISSIONS.MODULE_ADMIN],
+  services: [PERMISSIONS.SERVICE_MANAGE, PERMISSIONS.MODULE_ADMIN],
+  sites: [
+    PERMISSIONS.SITE_MANAGE,
+    PERMISSIONS.ITEM_SITES,
+    PERMISSIONS.MODULE_ADMIN,
+  ],
+  fonctions: [PERMISSIONS.MODULE_ADMIN, PERMISSIONS.USER_MANAGE],
+  droitsServices: [PERMISSIONS.USER_MANAGE, PERMISSIONS.MODULE_ADMIN],
+  permissions: [PERMISSIONS.ROLE_MANAGE, PERMISSIONS.MODULE_ADMIN],
+  dashboard: [...ADMIN_ZONE_PERMISSIONS],
+  personnel: [
+    PERMISSIONS.MODULE_ADMIN,
+    PERMISSIONS.MODULE_CONGE,
+    PERMISSIONS.MODULE_PERSONNEL,
+    PERMISSIONS.CONGE_DASHBOARD,
+    PERMISSIONS.CONGE_CONFIG,
+    PERMISSIONS.CONGE_NON_JUSTIFIE,
+    PERMISSIONS.CONGE_TRAITEMENT,
+    PERMISSIONS.CONGE_TYPES,
+    PERMISSIONS.CONGE_NOTIFICATIONS,
+    PERMISSIONS.CONGE_REQUEST,
+    PERMISSIONS.CONGE_RETURN,
+    PERMISSIONS.CALENDAR_MANAGE,
+  ],
+} as const;

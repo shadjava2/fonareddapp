@@ -4,11 +4,16 @@ import React, { useEffect, useState } from 'react';
 
 interface ConfigCongeFormData {
   nbjourMois: number;
+  /** Plafond annuel jours non justifiés (optionnel) */
+  congenonjustifie: number | '';
 }
 
 interface ConfigCongeFormProps {
-  onSubmit: (data: ConfigCongeFormData) => void;
-  initialData?: ConfigCongeFormData;
+  onSubmit: (data: {
+    nbjourMois: number;
+    congenonjustifie?: number;
+  }) => void;
+  initialData?: { nbjourMois: number; congenonjustifie?: number | null };
   submitLabel?: string;
   cancelLabel?: string;
   onCancel?: () => void;
@@ -25,6 +30,7 @@ const ConfigCongeForm: React.FC<ConfigCongeFormProps> = ({
 }) => {
   const [formData, setFormData] = useState<ConfigCongeFormData>({
     nbjourMois: 0,
+    congenonjustifie: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -32,11 +38,27 @@ const ConfigCongeForm: React.FC<ConfigCongeFormProps> = ({
     if (initialData) {
       setFormData({
         nbjourMois: initialData.nbjourMois || 0,
+        congenonjustifie:
+          initialData.congenonjustifie === undefined ||
+          initialData.congenonjustifie === null
+            ? ''
+            : Number(initialData.congenonjustifie),
       });
     }
   }, [initialData]);
 
   const handleChange = (field: keyof ConfigCongeFormData, value: string) => {
+    if (field === 'congenonjustifie') {
+      const t = value.trim();
+      setFormData((prev) => ({
+        ...prev,
+        congenonjustifie: t === '' ? '' : parseFloat(t) || 0,
+      }));
+      if (errors[field]) {
+        setErrors((prev) => ({ ...prev, [field]: '' }));
+      }
+      return;
+    }
     const numericValue = parseFloat(value) || 0;
     setFormData((prev) => ({
       ...prev,
@@ -63,6 +85,14 @@ const ConfigCongeForm: React.FC<ConfigCongeFormProps> = ({
       newErrors.nbjourMois = 'Le nombre de jours doit être au moins 1';
     }
 
+    if (formData.congenonjustifie !== '') {
+      const nj = Number(formData.congenonjustifie);
+      if (isNaN(nj) || nj < 0 || nj > 366) {
+        newErrors.congenonjustifie =
+          'Indiquez un nombre entre 0 et 366 (ou laissez vide)';
+      }
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -71,7 +101,11 @@ const ConfigCongeForm: React.FC<ConfigCongeFormProps> = ({
     e.preventDefault();
 
     if (validateForm()) {
-      onSubmit(formData);
+      onSubmit({
+        nbjourMois: formData.nbjourMois,
+        congenonjustifie:
+          formData.congenonjustifie === '' ? undefined : formData.congenonjustifie,
+      });
     }
   };
 
@@ -99,6 +133,34 @@ const ConfigCongeForm: React.FC<ConfigCongeFormProps> = ({
         />
         <p className="mt-1 text-xs text-gray-500">
           Nombre de jours de congé accordés par mois (peut être décimal)
+        </p>
+      </div>
+
+      <div>
+        <label
+          htmlFor="congenonjustifie"
+          className="block text-sm font-medium text-gray-700 mb-1"
+        >
+          Plafond jours non justifiés / an
+        </label>
+        <Input
+          id="congenonjustifie"
+          type="number"
+          min="0"
+          max="366"
+          step="0.5"
+          value={
+            formData.congenonjustifie === ''
+              ? ''
+              : String(formData.congenonjustifie)
+          }
+          onChange={(e) => handleChange('congenonjustifie', e.target.value)}
+          placeholder="Ex : 5"
+          error={errors.congenonjustifie}
+        />
+        <p className="mt-1 text-xs text-gray-500">
+          Nombre maximal de jours non justifiés par agent et par an (réinitialisé
+          en janvier sur les soldes ; laisser vide si non utilisé).
         </p>
       </div>
 

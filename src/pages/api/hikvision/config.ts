@@ -1,5 +1,14 @@
 import { prisma } from '@/lib/prisma';
 import { NextApiRequest, NextApiResponse } from 'next';
+import { Prisma } from '@prisma/client';
+
+function isMissingHikvisionConfigTable(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === 'P2021' &&
+    (error.meta as { table?: string } | undefined)?.table === 'hikvision_config'
+  );
+}
 
 export interface HikvisionConfig {
   ip: string;
@@ -18,6 +27,7 @@ const DEFAULTS: HikvisionConfig = {
 };
 
 export async function getHikvisionConfig(): Promise<HikvisionConfig> {
+  if (!prisma) throw new Error('Base de données non configurée (DATABASE_URL)');
   const row = await prisma.hikvision_config.findUnique({
     where: { id: 1 },
   });
@@ -43,21 +53,37 @@ export default async function handler(
         config,
         message: 'Configuration récupérée',
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(
         '❌ Erreur lors de la récupération de la configuration:',
         error
       );
+      if (isMissingHikvisionConfigTable(error)) {
+        return res.status(503).json({
+          success: false,
+          code: 'TABLE_MISSING',
+          message:
+            'La table hikvision_config est absente. Sur le serveur : npx prisma migrate deploy',
+        });
+      }
+      const msg = error instanceof Error ? error.message : 'Erreur inconnue';
       return res.status(500).json({
         success: false,
         message: 'Erreur lors de la récupération de la configuration',
-        error: error.message,
+        error: msg,
       });
     }
   }
 
   if (req.method === 'POST') {
     try {
+      if (!prisma) {
+        return res.status(503).json({
+          success: false,
+          message: 'Base de données non configurée (DATABASE_URL)',
+        });
+      }
+
       const { ip, username, password, port, timezone_offset_minutes } = req.body;
 
       if (!ip || !username) {
@@ -117,22 +143,30 @@ export default async function handler(
         },
         message: 'Configuration mise à jour avec succès',
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(
         '❌ Erreur lors de la mise à jour de la configuration:',
         error
       );
-      const msg = error?.message ?? '';
+      if (isMissingHikvisionConfigTable(error)) {
+        return res.status(503).json({
+          success: false,
+          code: 'TABLE_MISSING',
+          message:
+            'La table hikvision_config est absente. Sur le serveur : npx prisma migrate deploy',
+        });
+      }
+      const msg = error instanceof Error ? error.message : '';
       const isMissingColumn =
         msg.includes('timezone_offset_minute') ||
         msg.includes('Unknown column') ||
-        msg.includes("Column not found");
+        msg.includes('Column not found');
       return res.status(500).json({
         success: false,
         message: isMissingColumn
-          ? 'Base de données à jour requise : exécutez la migration add_hikvision_timezone_offset.sql (voir prisma/migrations).'
+          ? 'Base de données à jour requise : exécutez les migrations Prisma (prisma/migrations).'
           : 'Erreur lors de la mise à jour de la configuration',
-        error: error.message,
+        error: msg,
         code: isMissingColumn ? 'MIGRATION_REQUIRED' : undefined,
       });
     }

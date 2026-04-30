@@ -28,6 +28,9 @@ interface TraitementFormProps {
   demandes?: Array<{ id: number; label: string }>;
   phases?: Array<{ id: number; designation: string }>;
   readOnly?: boolean; // Mode lecture seule (pas de création)
+  canEditConformite?: boolean;
+  canEditApprobation?: boolean;
+  approbationLabel?: string;
 }
 
 const TraitementForm: React.FC<TraitementFormProps> = ({
@@ -40,6 +43,9 @@ const TraitementForm: React.FC<TraitementFormProps> = ({
   demandes = [],
   phases = [],
   readOnly = false,
+  canEditConformite = true,
+  canEditApprobation = true,
+  approbationLabel = 'Approbation',
 }) => {
   const [formData, setFormData] = useState<TraitementFormData>({
     fkDemande: initialData?.fkDemande,
@@ -149,6 +155,8 @@ const TraitementForm: React.FC<TraitementFormProps> = ({
         // Si observation est vide, mettre "-"
         const submitData = {
           ...formData,
+          conformite: canEditConformite ? formData.conformite : undefined,
+          approbation: canEditApprobation ? formData.approbation : undefined,
           observations:
             !formData.observations || formData.observations.trim() === ''
               ? '-'
@@ -328,7 +336,8 @@ const TraitementForm: React.FC<TraitementFormProps> = ({
       </div>
 
       {/* Conformité */}
-      <div className="transform transition-all duration-200 hover:bg-gray-50 p-3 rounded-lg border border-transparent hover:border-indigo-200">
+      {canEditConformite && (
+        <div className="transform transition-all duration-200 hover:bg-gray-50 p-3 rounded-lg border border-transparent hover:border-indigo-200">
         <label className="flex items-center cursor-pointer group">
           <input
             type="checkbox"
@@ -361,10 +370,12 @@ const TraitementForm: React.FC<TraitementFormProps> = ({
             ></div>
           </div>
         )}
-      </div>
+        </div>
+      )}
 
       {/* Approbation */}
-      <div className="transform transition-all duration-200 hover:bg-gray-50 p-3 rounded-lg border border-transparent hover:border-indigo-200">
+      {canEditApprobation && (
+        <div className="transform transition-all duration-200 hover:bg-gray-50 p-3 rounded-lg border border-transparent hover:border-indigo-200">
         <label className="flex items-center cursor-pointer group">
           <input
             type="checkbox"
@@ -374,7 +385,7 @@ const TraitementForm: React.FC<TraitementFormProps> = ({
             className="rounded border-gray-300 text-indigo-600 focus:ring-2 focus:ring-indigo-500 transition-all h-4 w-4 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           />
           <span className="ml-2 text-sm font-medium text-gray-700 group-hover:text-indigo-600 transition-colors">
-            Approbation
+            {approbationLabel}
           </span>
           {formData.approbation && (
             <CheckCircleIcon className="ml-2 h-5 w-5 text-green-500 animate-in zoom-in duration-200" />
@@ -397,7 +408,8 @@ const TraitementForm: React.FC<TraitementFormProps> = ({
             ></div>
           </div>
         )}
-      </div>
+        </div>
+      )}
 
       <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
         <button

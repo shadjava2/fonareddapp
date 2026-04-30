@@ -1,4 +1,7 @@
-import { useAuth } from '@/hooks/useAuth';
+import LogoutConfirmDialog from '@/components/auth/LogoutConfirmDialog';
+import { usePermissions } from '@/hooks/useAuth';
+import React, { useState } from 'react';
+import { PERMISSIONS } from '@/lib/rbac';
 import {
   ArrowLeftIcon,
   ArrowRightOnRectangleIcon,
@@ -16,25 +19,20 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 
+type MenuItem = {
+  name: string;
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+  description: string;
+  anyOf?: string[];
+};
+
 const AdminSidebar: React.FC = () => {
   const router = useRouter();
-  const { logout } = useAuth();
+  const { hasAnyPermission } = usePermissions();
+  const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
 
-  const handleLogout = async () => {
-    if (confirm('Êtes-vous sûr de vouloir vous déconnecter ?')) {
-      try {
-        await logout();
-        alert('Déconnexion réussie');
-        router.push('/');
-      } catch (error) {
-        console.error('Erreur lors de la déconnexion:', error);
-        alert('Erreur lors de la déconnexion');
-        router.push('/');
-      }
-    }
-  };
-
-  const menuItems = [
+  const menuItems: MenuItem[] = [
     {
       name: 'Tableau de bord',
       href: '/admin',
@@ -46,53 +44,77 @@ const AdminSidebar: React.FC = () => {
       href: '/admin/data-overview',
       icon: ChartBarIcon,
       description: 'Données en temps réel',
+      anyOf: [
+        PERMISSIONS.MODULE_ADMIN,
+        PERMISSIONS.SERVICE_MANAGE,
+        PERMISSIONS.USER_MANAGE,
+      ],
     },
     {
       name: 'Utilisateurs',
       href: '/admin/users',
       icon: UserGroupIcon,
       description: 'Gestion des utilisateurs du système',
+      anyOf: [PERMISSIONS.USER_MANAGE, PERMISSIONS.MODULE_ADMIN],
     },
     {
       name: 'Rôles',
       href: '/admin/roles',
       icon: ShieldCheckIcon,
       description: 'Gestion des rôles et permissions',
+      anyOf: [PERMISSIONS.ROLE_MANAGE, PERMISSIONS.MODULE_ADMIN],
     },
     {
       name: 'Fonctions',
       href: '/admin/fonctions',
       icon: BriefcaseIcon,
       description: "Gestion des fonctions de l'application",
+      anyOf: [PERMISSIONS.MODULE_ADMIN, PERMISSIONS.USER_MANAGE],
     },
     {
       name: 'Services',
       href: '/admin/services',
       icon: Cog6ToothIcon,
       description: 'Gestion des services disponibles',
+      anyOf: [PERMISSIONS.SERVICE_MANAGE, PERMISSIONS.MODULE_ADMIN],
     },
     {
       name: 'Sites',
       href: '/admin/sites',
       icon: BuildingOfficeIcon,
       description: 'Gestion des sites et lieux de travail',
+      anyOf: [
+        PERMISSIONS.SITE_MANAGE,
+        PERMISSIONS.ITEM_SITES,
+        PERMISSIONS.MODULE_ADMIN,
+      ],
     },
     {
       name: 'Droits services',
       href: '/admin/droits-services',
       icon: KeyIcon,
       description: "Gestion des droits d'accès aux services",
+      anyOf: [PERMISSIONS.USER_MANAGE, PERMISSIONS.MODULE_ADMIN],
     },
     {
       name: 'Rôles permissions',
       href: '/admin/roles-permissions',
       icon: UserIcon,
       description: 'Gestion des permissions par rôle',
+      anyOf: [PERMISSIONS.ROLE_MANAGE, PERMISSIONS.MODULE_ADMIN],
     },
   ];
 
+  const visibleItems = menuItems.filter(
+    (item) => !item.anyOf?.length || hasAnyPermission(item.anyOf)
+  );
+
   return (
     <div className="flex flex-col h-full bg-gradient-to-b from-green-600 to-green-700 text-white">
+      <LogoutConfirmDialog
+        isOpen={logoutDialogOpen}
+        onClose={() => setLogoutDialogOpen(false)}
+      />
       {/* Header */}
       <div className="p-6 border-b border-green-500">
         <div className="flex items-center space-x-3">
@@ -115,7 +137,6 @@ const AdminSidebar: React.FC = () => {
 
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-2">
-        {/* Bouton retour */}
         <Link
           href="/home"
           className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-green-500 transition-colors duration-200 group"
@@ -124,11 +145,9 @@ const AdminSidebar: React.FC = () => {
           <span className="font-medium">Retour à l'accueil</span>
         </Link>
 
-        {/* Séparateur */}
         <div className="border-t border-green-500 my-4"></div>
 
-        {/* Menu items */}
-        {menuItems.map((item) => {
+        {visibleItems.map((item) => {
           const isActive = router.pathname === item.href;
           const Icon = item.icon;
 
@@ -154,10 +173,10 @@ const AdminSidebar: React.FC = () => {
         })}
       </nav>
 
-      {/* Footer */}
       <div className="p-4 border-t border-green-500">
         <button
-          onClick={handleLogout}
+          type="button"
+          onClick={() => setLogoutDialogOpen(true)}
           className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-red-500 hover:text-white transition-colors duration-200 group mb-3"
         >
           <ArrowRightOnRectangleIcon className="h-5 w-5" />
@@ -165,7 +184,6 @@ const AdminSidebar: React.FC = () => {
         </button>
         <div className="text-xs text-green-100 text-center">
           <p>Version 1.0.0</p>
-          <p>Mode développement</p>
         </div>
       </div>
     </div>

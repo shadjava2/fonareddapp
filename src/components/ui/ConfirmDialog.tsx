@@ -35,7 +35,7 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
+      if (e.key === 'Escape' && isOpen && !loading) {
         onClose();
       }
     };
@@ -49,7 +49,7 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       document.removeEventListener('keydown', handleEscape);
       document.body.style.overflow = 'unset';
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, loading, onClose]);
 
   useEffect(() => {
     if (isOpen && dialogRef.current) {
@@ -99,7 +99,10 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       <div className="flex min-h-screen items-center justify-center px-4 pt-4 pb-20 text-center sm:block sm:p-0">
         <div
           className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
-          onClick={onClose}
+          onClick={() => {
+            if (!loading) onClose();
+          }}
+          aria-hidden="true"
         />
 
         {/* Centrage */}

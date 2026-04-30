@@ -1,4 +1,5 @@
 import { getTokenFromRequest, getUserFromToken } from '@/lib/auth';
+import { hasAnyPermission, PERMISSIONS } from '@/lib/rbac';
 import { prisma } from '@/lib/prisma';
 import type { NextApiRequest, NextApiResponse } from 'next';
 
@@ -24,7 +25,12 @@ export default async function handler(
   }
 
   // Vérifier les permissions
-  if (!user.permissions.includes('CONGE_MANAGE')) {
+  if (
+    !hasAnyPermission(user as any, [
+      PERMISSIONS.CONGE_CONFIG,
+      PERMISSIONS.MODULE_ADMIN,
+    ])
+  ) {
     return res.status(403).json({ success: false, message: 'Permissions insuffisantes' });
   }
 
@@ -32,7 +38,7 @@ export default async function handler(
     if (req.method === 'GET') {
       // Récupérer la dernière configuration de congé
       const config = await prisma.congeconfig.findFirst({
-        orderBy: { createdAt: 'desc' },
+        orderBy: { id: 'desc' },
       });
 
       // Si aucune config n'existe, créer une config par défaut
@@ -67,7 +73,7 @@ export default async function handler(
 
       // Récupérer la dernière configuration
       const existingConfig = await prisma.congeconfig.findFirst({
-        orderBy: { createdAt: 'desc' },
+        orderBy: { id: 'desc' },
       });
 
       let updatedConfig;

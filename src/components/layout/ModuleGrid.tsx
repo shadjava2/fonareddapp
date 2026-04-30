@@ -9,6 +9,11 @@ import {
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import React from 'react';
+import {
+  getAccessibleModules,
+  hasAnyPermission,
+  PERMISSIONS,
+} from '@/lib/rbac';
 
 interface ModuleTileProps {
   name: string;
@@ -76,51 +81,66 @@ interface ModuleGridProps {
   user: UserProfile | null;
 }
 
+const moduleTiles: Array<{
+  key: string;
+  name: string;
+  description: string;
+  icon: React.ComponentType<{ className?: string }>;
+  href: string;
+  color: string;
+  /** Au moins une de ces permissions (noms en base) */
+  anyOf: string[];
+  countLabel: string;
+}> = [
+  {
+    key: 'admin',
+    name: 'Administration',
+    description: 'Utilisateurs, rôles, permissions, structures',
+    icon: Cog6ToothIcon,
+    href: '/admin',
+    color: 'bg-primary-500',
+    anyOf: [PERMISSIONS.MODULE_ADMIN],
+    countLabel: 'droits via rôle',
+  },
+  {
+    key: 'conge',
+    name: 'Gestion Congé',
+    description: 'Demandes, validations, calendrier',
+    icon: CalendarDaysIcon,
+    href: '/conge',
+    color: 'bg-blue-500',
+    anyOf: [
+      PERMISSIONS.MODULE_CONGE,
+      PERMISSIONS.CONGE_DASHBOARD,
+      PERMISSIONS.CONGE_CONFIG,
+      PERMISSIONS.CONGE_NON_JUSTIFIE,
+      PERMISSIONS.CONGE_TRAITEMENT,
+      PERMISSIONS.CONGE_TYPES,
+      PERMISSIONS.CONGE_NOTIFICATIONS,
+      PERMISSIONS.CONGE_REQUEST,
+      PERMISSIONS.CONGE_RETURN,
+      PERMISSIONS.CALENDAR_MANAGE,
+      PERMISSIONS.MODULE_ADMIN,
+    ],
+    countLabel: 'accès congé',
+  },
+  {
+    key: 'personnel',
+    name: 'Gestion Personnel',
+    description: 'Effectifs, présences, affectations',
+    icon: ClockIcon,
+    href: '/personnel',
+    color: 'bg-green-500',
+    anyOf: [PERMISSIONS.MODULE_PERSONNEL, PERMISSIONS.MODULE_ADMIN],
+    countLabel: "présences aujourd'hui",
+  },
+];
+
 const ModuleGrid: React.FC<ModuleGridProps> = ({ user }) => {
-  // Mode développement : tous les modules accessibles
-  const accessibleNames = new Set([
-    'Administration',
-    'Gestion Congé',
-    'Gestion Personnel',
-    'Sites',
-    'Rapports',
-  ]);
+  const modules = moduleTiles.filter((m) => hasAnyPermission(user, m.anyOf));
 
-  // Modules par défaut avec leurs métadonnées (cartes plus "pro" et actionnables)
-  const allModules = [
-    {
-      name: 'Administration',
-      description: 'Utilisateurs, rôles, permissions, structures',
-      icon: Cog6ToothIcon,
-      href: '/admin',
-      color: 'bg-primary-500',
-      count: user?.permissions?.length ?? 0,
-      countLabel: 'droits via rôle',
-    },
-    {
-      name: 'Gestion Congé',
-      description: 'Demandes, validations, calendrier',
-      icon: CalendarDaysIcon,
-      href: '/conge',
-      color: 'bg-blue-500',
-      count: 0, // À implémenter avec les vraies données
-      countLabel: 'demandes en attente',
-    },
-    {
-      name: 'Gestion Personnel',
-      description: 'Effectifs, présences, affectations',
-      icon: ClockIcon,
-      href: '/personnel',
-      color: 'bg-green-500',
-      count: 0, // À implémenter avec les vraies données
-      countLabel: "présences aujourd'hui",
-    },
-  ];
-
-  // Filtrer strictement les modules accessibles sans afficher d'erreur
-  const modules = allModules.filter((module) =>
-    accessibleNames.has(module.name)
-  );
+  const accessible = getAccessibleModules(user);
+  const serviceCount = user?.services?.length ?? 0;
 
   return (
     <div className="space-y-6">
@@ -129,26 +149,32 @@ const ModuleGrid: React.FC<ModuleGridProps> = ({ user }) => {
           Modules disponibles
         </h2>
         <p className="text-sm text-gray-500">
-          Accédez aux différents modules de gestion selon vos permissions.
+          Seuls les modules pour lesquels votre rôle a des droits sont affichés.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        {modules.map((module) => (
-          <ModuleTile
-            key={module.name}
-            name={module.name}
-            description={module.description}
-            icon={module.icon}
-            href={module.href}
-            color={module.color}
-            count={module.count}
-            countLabel={module.countLabel}
-          />
-        ))}
-      </div>
+      {modules.length === 0 ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-6 text-sm text-amber-900">
+          Aucun module n’est associé à votre compte. Contactez un administrateur
+          pour vous attribuer un rôle avec les permissions nécessaires.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {modules.map((module) => (
+            <ModuleTile
+              key={module.key}
+              name={module.name}
+              description={module.description}
+              icon={module.icon}
+              href={module.href}
+              color={module.color}
+              count={module.key === 'admin' ? user?.permissions?.length : 0}
+              countLabel={module.countLabel}
+            />
+          ))}
+        </div>
+      )}
 
-      {/* Statistiques globales (corrigées: droits issus du rôle) */}
       <div className="bg-white rounded-lg shadow p-6">
         <h3 className="text-lg font-medium text-gray-900 mb-4">Statistiques</h3>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -161,7 +187,7 @@ const ModuleGrid: React.FC<ModuleGridProps> = ({ user }) => {
                 Services autorisés
               </p>
               <p className="text-2xl font-semibold text-gray-900">
-                {user?.services?.length ?? 0}
+                {serviceCount}
               </p>
             </div>
           </div>
@@ -183,8 +209,12 @@ const ModuleGrid: React.FC<ModuleGridProps> = ({ user }) => {
               <ShieldCheckIcon className="h-8 w-8 text-green-500" />
             </div>
             <div className="ml-3">
-              <p className="text-sm font-medium text-gray-500">Rôle</p>
-              <p className="text-2xl font-semibold text-gray-900">Actif</p>
+              <p className="text-sm font-medium text-gray-500">
+                Modules visibles
+              </p>
+              <p className="text-2xl font-semibold text-gray-900">
+                {accessible.length}
+              </p>
             </div>
           </div>
         </div>

@@ -21,6 +21,7 @@ interface DemandeCongeFormData {
   nbrjour?: number;
   soldeconge?: number;
   soldeConsomme?: number;
+  soldeRestant?: number;
   section?: string;
   demandeur?: string; // Nom complet de l'utilisateur (nom + prénom)
   remiseetreprise?: string;
@@ -284,6 +285,7 @@ const DemandeCongeForm: React.FC<DemandeCongeFormProps> = ({
               ...prev,
               soldeconge: response.solde.solde, // Solde total depuis congesolde.solde
               soldeConsomme: response.solde.soldeConsomme, // Solde consommé depuis congesolde.soldeConsomme
+              soldeRestant: response.solde.soldeRestant, // Solde restant calculé
               fkSoldes: response.solde.id
                 ? String(response.solde.id)
                 : undefined, // ID du congesolde pour fkSoldes
@@ -319,6 +321,7 @@ const DemandeCongeForm: React.FC<DemandeCongeFormProps> = ({
           ...prev,
           soldeconge: undefined,
           soldeConsomme: undefined,
+          soldeRestant: undefined,
           fkSoldes: undefined,
         }));
       }
@@ -344,6 +347,7 @@ const DemandeCongeForm: React.FC<DemandeCongeFormProps> = ({
         au: formatDate(initialData.au || ''),
         nbrjour: initialData.nbrjour,
         soldeconge: initialData.soldeconge,
+        soldeRestant: initialData.soldeconge,
         section: initialData.section || '',
         demandeur: initialData.demandeur || '',
         remiseetreprise: initialData.remiseetreprise || '',
@@ -541,6 +545,30 @@ const DemandeCongeForm: React.FC<DemandeCongeFormProps> = ({
     field: keyof DemandeCongeFormData,
     value: string | number | undefined
   ) => {
+    if (field === 'nbrjour') {
+      const numericValue =
+        typeof value === 'number'
+          ? value
+          : value
+            ? Number.parseFloat(String(value))
+            : undefined;
+      const soldeRestant = Number(formData.soldeRestant ?? 0);
+
+      if (numericValue !== undefined && !Number.isNaN(numericValue)) {
+        if (numericValue > soldeRestant && soldeRestant >= 0) {
+          setFormData((prev) => ({
+            ...prev,
+            nbrjour: soldeRestant,
+          }));
+          setErrors((prev) => ({
+            ...prev,
+            nbrjour: `Valeur ajustée au solde restant (${soldeRestant}).`,
+          }));
+          return;
+        }
+      }
+    }
+
     setFormData((prev) => ({
       ...prev,
       [field]: value,
@@ -557,10 +585,32 @@ const DemandeCongeForm: React.FC<DemandeCongeFormProps> = ({
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
 
+    // Étape 1: le demandeur est le point d'entrée obligatoire
+    if (!localState.fkDemandeurId || !formData.demandeur?.trim()) {
+      newErrors.demandeur = 'Veuillez sélectionner un demandeur';
+      setErrors(newErrors);
+      return false;
+    }
+
+    if (loadingSolde) {
+      newErrors.demandeur =
+        'Chargement du solde en cours, veuillez patienter...';
+      setErrors(newErrors);
+      return false;
+    }
+
+    const soldeRestant = Number(formData.soldeRestant ?? 0);
+    if (soldeRestant <= 0) {
+      newErrors.nbrjour =
+        "Ce demandeur n'a pas de solde disponible pour une nouvelle demande.";
+    }
+
     // Validation obligatoire: nombre de jours
     if (!formData.nbrjour || formData.nbrjour <= 0) {
       newErrors.nbrjour =
         'Le nombre de jours est obligatoire et doit être supérieur à 0';
+    } else if (formData.nbrjour > soldeRestant) {
+      newErrors.nbrjour = `Le nombre de jours demandé (${formData.nbrjour}) dépasse le solde restant (${soldeRestant}).`;
     }
 
     // Validation obligatoire: date de début
@@ -639,173 +689,8 @@ const DemandeCongeForm: React.FC<DemandeCongeFormProps> = ({
     <>
       <style>{contentEditableStyles}</style>
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Type de congé */}
         <div>
-          <label
-            htmlFor="fkTypeConge"
-            className="block text-sm font-medium text-gray-700 mb-1"
-          >
-            Type de congé <span className="text-red-500">*</span>
-          </label>
-          <ModernSelect
-            options={typesConges.map((type) => ({
-              value: type.id,
-              label: type.nom,
-            }))}
-            value={formData.fkTypeConge || null}
-            onChange={(value) =>
-              handleChange('fkTypeConge', value ? Number(value) : undefined)
-            }
-            placeholder="Sélectionnez un type de congé"
-            error={errors.fkTypeConge}
-            required
-          />
-        </div>
-
-        {/* Nombre de jours - EN PREMIER */}
-        <div>
-          <label
-            htmlFor="nbrjour"
-            className="block text-sm font-medium text-gray-700 mb-1"
-          >
-            Nombre de jours <span className="text-red-500">*</span>
-          </label>
-          <Input
-            id="nbrjour"
-            type="number"
-            step="0.5"
-            min="0.5"
-            value={formData.nbrjour || ''}
-            onChange={(e) =>
-              handleChange(
-                'nbrjour',
-                e.target.value ? parseFloat(e.target.value) : undefined
-              )
-            }
-            placeholder="Ex: 5"
-            error={errors.nbrjour}
-            required
-          />
-          <p className="mt-1 text-xs text-gray-500">
-            Durée du congé (samedis, dimanches et jours fériés exclus)
-          </p>
-        </div>
-
-        {/* Dates */}
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label
-              htmlFor="du"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Date de début <span className="text-red-500">*</span>
-            </label>
-            <Input
-              id="du"
-              type="date"
-              value={formData.du}
-              onChange={(e) => handleChange('du', e.target.value)}
-              error={errors.du}
-              required
-            />
-          </div>
-          <div>
-            <label
-              htmlFor="au"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Date de fin <span className="text-red-500">*</span>
-              {calculating && (
-                <span className="ml-2 text-xs text-blue-600">(calcul...)</span>
-              )}
-            </label>
-            <Input
-              id="au"
-              type="date"
-              value={formData.au}
-              onChange={(e) => handleChange('au', e.target.value)}
-              error={errors.au}
-              required
-              readOnly
-              className="bg-gray-50 cursor-not-allowed"
-            />
-            {formData.au && formData.du && formData.nbrjour && (
-              <p className="mt-1 text-xs text-blue-600">
-                Calculée automatiquement en excluant samedis, dimanches et jours
-                fériés
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Solde de congé - Chargé depuis congesolde avec fkUtilisateur = ID du demandeur */}
-        {localState.fkDemandeurId && (
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Solde total (congesolde.solde)
-              </label>
-              <Input
-                type="number"
-                step="0.5"
-                min="0"
-                value={formData.soldeconge ?? 0}
-                readOnly
-                className="bg-gray-50 cursor-not-allowed"
-              />
-              {loadingSolde && (
-                <p className="mt-1 text-xs text-blue-600">
-                  Chargement depuis congesolde (fkUtilisateur=
-                  {localState.fkDemandeurId})...
-                </p>
-              )}
-              <p className="mt-1 text-xs text-gray-500">
-                Solde total depuis congesolde où fkUtilisateur ={' '}
-                {localState.fkDemandeurId}
-              </p>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Solde consommé (congesolde.soldeConsomme)
-              </label>
-              <Input
-                type="number"
-                step="0.5"
-                min="0"
-                value={formData.soldeConsomme ?? 0}
-                readOnly
-                className="bg-gray-50 cursor-not-allowed"
-              />
-              <p className="mt-1 text-xs text-gray-500">
-                Solde consommé depuis congesolde où fkUtilisateur ={' '}
-                {localState.fkDemandeurId}
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Section */}
-        <div>
-          <label
-            htmlFor="section"
-            className="block text-sm font-medium text-gray-700 mb-1"
-          >
-            Section <span className="text-red-500">*</span>
-          </label>
-          <Input
-            id="section"
-            type="text"
-            value={formData.section || ''}
-            onChange={(e) => handleChange('section', e.target.value)}
-            placeholder="Ex: Direction, RH, etc."
-            error={errors.section}
-            maxLength={255}
-            required
-          />
-        </div>
-
-        {/* Demandeur - Autocomplete */}
-        <div>
+          {/* Demandeur - champ principal en premier */}
           <AutocompleteSelect
             label="Demandeur"
             placeholder="Rechercher un utilisateur..."
@@ -814,12 +699,10 @@ const DemandeCongeForm: React.FC<DemandeCongeFormProps> = ({
             onChange={(value) => {
               const userId = value ? Number(value) : undefined;
               const selectedUser = utilisateurs.find((u) => u.value === userId);
-              // Mettre à jour l'ID local pour charger le solde
               setLocalState((prev) => ({
                 ...prev,
                 fkDemandeurId: userId,
               }));
-              // Enregistrer au format "id | nom" pour pouvoir récupérer l'ID plus tard
               setFormData((prev) => ({
                 ...prev,
                 demandeur: selectedUser
@@ -830,31 +713,227 @@ const DemandeCongeForm: React.FC<DemandeCongeFormProps> = ({
             error={errors.demandeur}
             required
           />
+          {!localState.fkDemandeurId && (
+            <p className="mt-2 text-xs text-gray-500">
+              Sélectionnez d'abord le demandeur pour charger son solde et
+              afficher le reste du formulaire.
+            </p>
+          )}
         </div>
 
-        {/* Remplaçant - Autocomplete */}
-        <div>
-          <AutocompleteSelect
-            label="Remplaçant"
-            placeholder="Rechercher un utilisateur..."
-            options={utilisateurs}
-            value={formData.idremplacant || null}
-            onChange={(value) => {
-              const userId = value ? Number(value) : undefined;
-              const selectedUser = utilisateurs.find((u) => u.value === userId);
-              setFormData((prev) => ({
-                ...prev,
-                idremplacant: userId,
-                nomsremplacant: selectedUser ? selectedUser.label : '',
-              }));
-            }}
-            error={errors.idremplacant || errors.nomsremplacant}
-            required
-          />
-        </div>
+        {localState.fkDemandeurId && (
+          <>
+            {/* Solde de congé - Chargé depuis congesolde avec fkUtilisateur = ID du demandeur */}
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <div className="block text-sm font-medium text-gray-700 mb-1">
+                  Solde total
+                </div>
+                <Input
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  value={formData.soldeconge ?? 0}
+                  readOnly
+                  className="bg-gray-50 cursor-not-allowed"
+                />
+              </div>
+              <div>
+                <div className="block text-sm font-medium text-gray-700 mb-1">
+                  Solde consommé
+                </div>
+                <Input
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  value={formData.soldeConsomme ?? 0}
+                  readOnly
+                  className="bg-gray-50 cursor-not-allowed"
+                />
+              </div>
+              <div>
+                <div className="block text-sm font-medium text-gray-700 mb-1">
+                  Solde restant
+                </div>
+                <Input
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  value={formData.soldeRestant ?? 0}
+                  readOnly
+                  className="bg-gray-50 cursor-not-allowed font-semibold"
+                />
+                {loadingSolde && (
+                  <p className="mt-1 text-xs text-blue-600">
+                    Chargement du solde...
+                  </p>
+                )}
+              </div>
+            </div>
 
-        {/* Remise et reprise - Texte enrichi */}
-        <div>
+            {/* Type de congé */}
+            <div>
+              <label
+                htmlFor="fkTypeConge"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
+                Type de congé <span className="text-red-500">*</span>
+              </label>
+              <ModernSelect
+                options={typesConges.map((type) => ({
+                  value: type.id,
+                  label: type.nom,
+                }))}
+                value={formData.fkTypeConge || null}
+                onChange={(value) =>
+                  handleChange('fkTypeConge', value ? Number(value) : undefined)
+                }
+                placeholder="Sélectionnez un type de congé"
+                error={errors.fkTypeConge}
+                required
+              />
+            </div>
+
+            {/* Nombre de jours */}
+            <div>
+              <label
+                htmlFor="nbrjour"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
+                Nombre de jours <span className="text-red-500">*</span>
+              </label>
+              <Input
+                id="nbrjour"
+                type="number"
+                step="0.5"
+                min="0.5"
+                max={formData.soldeRestant ?? undefined}
+                value={formData.nbrjour || ''}
+                onChange={(e) =>
+                  handleChange(
+                    'nbrjour',
+                    e.target.value ? Number.parseFloat(e.target.value) : undefined
+                  )
+                }
+                onBlur={() => {
+                  const soldeRestant = Number(formData.soldeRestant ?? 0);
+                  const nbrjour = Number(formData.nbrjour ?? 0);
+                  if (
+                    nbrjour > soldeRestant &&
+                    soldeRestant >= 0 &&
+                    !Number.isNaN(nbrjour)
+                  ) {
+                    setFormData((prev) => ({
+                      ...prev,
+                      nbrjour: soldeRestant,
+                    }));
+                    setErrors((prev) => ({
+                      ...prev,
+                      nbrjour: `Valeur ajustée au solde restant (${soldeRestant}).`,
+                    }));
+                  }
+                }}
+                placeholder="Ex: 5"
+                error={errors.nbrjour}
+                required
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                La durée ne peut pas dépasser le solde restant du demandeur.
+              </p>
+            </div>
+
+            {/* Dates */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label
+                  htmlFor="du"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Date de début <span className="text-red-500">*</span>
+                </label>
+                <Input
+                  id="du"
+                  type="date"
+                  value={formData.du}
+                  onChange={(e) => handleChange('du', e.target.value)}
+                  error={errors.du}
+                  required
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="au"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Date de fin <span className="text-red-500">*</span>
+                  {calculating && (
+                    <span className="ml-2 text-xs text-blue-600">(calcul...)</span>
+                  )}
+                </label>
+                <Input
+                  id="au"
+                  type="date"
+                  value={formData.au}
+                  onChange={(e) => handleChange('au', e.target.value)}
+                  error={errors.au}
+                  required
+                  readOnly
+                  className="bg-gray-50 cursor-not-allowed"
+                />
+                {formData.au && formData.du && formData.nbrjour && (
+                  <p className="mt-1 text-xs text-blue-600">
+                    Calculée automatiquement en excluant samedis, dimanches et
+                    jours fériés
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Section */}
+            <div>
+              <label
+                htmlFor="section"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
+                Section <span className="text-red-500">*</span>
+              </label>
+              <Input
+                id="section"
+                type="text"
+                value={formData.section || ''}
+                onChange={(e) => handleChange('section', e.target.value)}
+                placeholder="Ex: Direction, RH, etc."
+                error={errors.section}
+                maxLength={255}
+                required
+              />
+            </div>
+
+            {/* Remplaçant - Autocomplete */}
+            <div>
+              <AutocompleteSelect
+                label="Remplaçant"
+                placeholder="Rechercher un utilisateur..."
+                options={utilisateurs}
+                value={formData.idremplacant || null}
+                onChange={(value) => {
+                  const userId = value ? Number(value) : undefined;
+                  const selectedUser = utilisateurs.find(
+                    (u) => u.value === userId
+                  );
+                  setFormData((prev) => ({
+                    ...prev,
+                    idremplacant: userId,
+                    nomsremplacant: selectedUser ? selectedUser.label : '',
+                  }));
+                }}
+                error={errors.idremplacant || errors.nomsremplacant}
+                required
+              />
+            </div>
+
+            {/* Remise et reprise - Texte enrichi */}
+            <div>
           <label
             htmlFor="remiseetreprise"
             className="block text-sm font-medium text-gray-700 mb-1"
@@ -1023,10 +1102,10 @@ const DemandeCongeForm: React.FC<DemandeCongeFormProps> = ({
             <span className="inline-block w-1.5 h-1.5 bg-indigo-400 rounded-full"></span>
             Utilisez les outils de formatage pour enrichir votre texte
           </p>
-        </div>
+            </div>
 
-        {/* Statut - Toujours BROUILLON, non éditable */}
-        <div>
+            {/* Statut - Toujours BROUILLON, non éditable */}
+            <div>
           <label
             htmlFor="statut"
             className="block text-sm font-medium text-gray-700 mb-1"
@@ -1041,10 +1120,10 @@ const DemandeCongeForm: React.FC<DemandeCongeFormProps> = ({
             className="bg-gray-50 cursor-not-allowed"
           />
           <input type="hidden" name="statut" value="BROUILLON" />
-        </div>
+            </div>
 
-        {/* Superviseur - Phase 3 */}
-        <div>
+            {/* Superviseur - Phase 3 */}
+            <div>
           <AutocompleteSelect
             label="Superviseur"
             placeholder="Rechercher un superviseur..."
@@ -1064,13 +1143,13 @@ const DemandeCongeForm: React.FC<DemandeCongeFormProps> = ({
             Superviseur responsable de l'approbation (Phase 3){' '}
             <span className="text-red-500">*</span>
           </p>
-        </div>
+            </div>
 
-        {/* Niveau - Toujours 0, masqué */}
-        <input type="hidden" name="niveau" value="0" />
+            {/* Niveau - Toujours 0, masqué */}
+            <input type="hidden" name="niveau" value="0" />
 
-        {/* Information box */}
-        <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+            {/* Information box */}
+            <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
           <div className="flex items-start">
             <div className="flex-shrink-0">
               <svg
@@ -1097,7 +1176,9 @@ const DemandeCongeForm: React.FC<DemandeCongeFormProps> = ({
               </div>
             </div>
           </div>
-        </div>
+            </div>
+          </>
+        )}
 
         <div className="flex justify-end space-x-3 pt-4">
           <button

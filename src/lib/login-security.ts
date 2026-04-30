@@ -3,19 +3,29 @@ import { sendLoginNotificationEmail } from '@/lib/mail';
 import { prisma } from '@/lib/prisma';
 import type { NextApiRequest } from 'next';
 
+/** Affichage lisible pour connexions locales (dev : navigateur → localhost). */
+function normalizeClientIpForDisplay(ip: string | null): string | null {
+  if (!ip) return null;
+  const t = ip.trim();
+  if (t === '::1' || t === '::ffff:127.0.0.1' || t === '127.0.0.1') {
+    return '127.0.0.1 (ordinateur local — développement)';
+  }
+  if (t.startsWith('::ffff:')) return t.slice(7);
+  return t;
+}
+
 export function getClientIp(req: NextApiRequest): string | null {
   const xff = req.headers['x-forwarded-for'];
+  let candidate: string | null = null;
   if (typeof xff === 'string' && xff.trim()) {
-    return xff.split(',')[0]?.trim() || null;
+    candidate = xff.split(',')[0]?.trim() || null;
+  } else if (Array.isArray(xff) && xff[0]) {
+    candidate = xff[0].split(',')[0]?.trim() || null;
   }
-  if (Array.isArray(xff) && xff[0]) {
-    return xff[0].split(',')[0]?.trim() || null;
+  if (!candidate) {
+    candidate = req.socket?.remoteAddress || null;
   }
-  const raw = req.socket?.remoteAddress;
-  if (!raw) return null;
-  if (raw === '::1') return '127.0.0.1 (local)';
-  if (raw.startsWith('::ffff:')) return raw.slice(7);
-  return raw;
+  return normalizeClientIpForDisplay(candidate);
 }
 
 export function getClientUserAgent(req: NextApiRequest): string | null {

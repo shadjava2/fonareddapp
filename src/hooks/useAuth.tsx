@@ -1,4 +1,11 @@
+import { UserProfile } from '@/lib/auth';
 import { apiPost, handleApiError } from '@/lib/fetcher';
+import {
+  hasAllPermissions as rbacHasAllPermissions,
+  hasAnyPermission as rbacHasAnyPermission,
+  hasPermission as rbacHasPermission,
+  hasServiceAccess as rbacHasServiceAccess,
+} from '@/lib/rbac';
 import {
   createContext,
   ReactNode,
@@ -16,9 +23,10 @@ interface User {
   mail: string | null;
   phone: string | null;
   fkRole: any;
+  roleNom?: string | null;
   initPassword: any;
   permissions: string[];
-  services: any[];
+  services: number[];
 }
 
 interface AuthContextType {
@@ -80,9 +88,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const checkAuth = async () => {
-    // Désactivé en mode développement pour éviter les redirections
-    console.log('🔍 checkAuth désactivé en mode développement');
-    return;
+    if (isCheckingRef.current) return;
+    isCheckingRef.current = true;
+    try {
+      const response = await fetch('/api/auth/me');
+      const data = await response.json();
+      if (data.success && data.user) {
+        setUser({
+          id: data.user.id,
+          nom: data.user.nom,
+          prenom: data.user.prenom,
+          username: data.user.username,
+          mail: data.user.mail,
+          phone: data.user.phone,
+          fkRole: data.user.fkRole,
+          roleNom: data.user.roleNom ?? null,
+          initPassword: data.user.initPassword,
+          permissions: data.user.permissions ?? [],
+          services: Array.isArray(data.user.services)
+            ? data.user.services.map(Number)
+            : [],
+        });
+      } else {
+        setUser(null);
+      }
+    } catch (e) {
+      console.error('checkAuth:', e);
+      setUser(null);
+    } finally {
+      isCheckingRef.current = false;
+    }
   };
 
   const updateUser = (userData: Partial<User>) => {
@@ -108,9 +143,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             mail: data.user.mail,
             phone: data.user.phone,
             fkRole: data.user.fkRole,
+            roleNom: data.user.roleNom ?? null,
             initPassword: data.user.initPassword,
-            permissions: data.user.permissions || ['*'],
-            services: data.user.services || ['*'],
+            permissions: data.user.permissions ?? [],
+            services: Array.isArray(data.user.services)
+              ? data.user.services.map(Number)
+              : [],
           };
 
           console.log(
@@ -118,43 +156,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           );
           setUser(realUser);
         } else {
-          // Fallback: Utilisateur par défaut si l'API échoue
-          console.warn(
-            "⚠️ Impossible de récupérer l'utilisateur, utilisation du fallback"
-          );
-          const staticUser: User = {
-            id: 33, // ID par défaut basé sur votre demande
-            nom: 'Utilisateur',
-            prenom: 'Test',
-            username: 'user33',
-            mail: 'user33@fonaredd.com',
-            phone: null,
-            fkRole: 1,
-            initPassword: null,
-            permissions: ['*'],
-            services: ['*'],
-          };
-          setUser(staticUser);
+          setUser(null);
         }
       } catch (error) {
         console.error(
           "❌ Erreur lors de la récupération de l'utilisateur:",
           error
         );
-        // Fallback en cas d'erreur
-        const staticUser: User = {
-          id: 33,
-          nom: 'Utilisateur',
-          prenom: 'Test',
-          username: 'user33',
-          mail: 'user33@fonaredd.com',
-          phone: null,
-          fkRole: 1,
-          initPassword: null,
-          permissions: ['*'],
-          services: ['*'],
-        };
-        setUser(staticUser);
+        setUser(null);
       } finally {
         setLoading(false);
       }
@@ -187,30 +196,24 @@ export function useAuth() {
 // Hook pour vérifier les permissions
 export function usePermissions() {
   const { user } = useAuth();
+  const profile = user as unknown as UserProfile | null;
 
-  const hasPermission = (permission: string) => {
-    // Mode développement : accès libre à tous les modules
-    return true;
-  };
+  const hasPermission = (permission: string) =>
+    rbacHasPermission(profile, permission);
 
   const hasRole = (roleId: number) => {
-    return user?.fkRole === roleId;
+    if (!user) return false;
+    return String(user.fkRole) === String(roleId);
   };
 
-  const hasServiceAccess = (serviceId: number) => {
-    // Mode développement : accès libre à tous les services
-    return true;
-  };
+  const hasServiceAccess = (serviceId: number) =>
+    rbacHasServiceAccess(profile, serviceId);
 
-  const hasAnyPermission = (permissions: string[]) => {
-    // Mode développement : accès libre à tous les modules
-    return true;
-  };
+  const hasAnyPermission = (permissions: string[]) =>
+    rbacHasAnyPermission(profile, permissions);
 
-  const hasAllPermissions = (permissions: string[]) => {
-    // Mode développement : accès libre à tous les modules
-    return true;
-  };
+  const hasAllPermissions = (permissions: string[]) =>
+    rbacHasAllPermissions(profile, permissions);
 
   return {
     hasPermission,
@@ -218,7 +221,7 @@ export function usePermissions() {
     hasServiceAccess,
     hasAnyPermission,
     hasAllPermissions,
-    permissions: user?.permissions || [],
-    services: user?.services || [],
+    permissions: user?.permissions ?? [],
+    services: user?.services ?? [],
   };
 }

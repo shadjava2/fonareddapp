@@ -11,22 +11,26 @@ interface SchedulerResponse {
     joursAjoutes: number;
     utilisateursTraites: number;
     totalSoldesResets?: number;
+    plafondNonJustifie?: number;
   };
 }
 
 /**
- * API pour mettre à jour les soldes de congé à la fin de chaque mois
+ * Mise à jour des soldes de congé (fin de mois, via cron / POST sécurisé).
  *
- * Règles :
- * - Janvier à octobre : ajouter nbjourMois au solde de chaque utilisateur
- * - Novembre : ajouter nbjourMois * 2 (car rien n'a été ajouté en janvier)
- * - Décembre : remettre tous les soldes à 0
+ * Solde congé classique :
+ * - Janvier : pas d’ajout de jours (compensé en novembre)
+ * - Février à octobre : +nbjourMois
+ * - Novembre : +nbjourMois × 2
+ * - Décembre : solde et soldeConsomme → 0 ; congenonjustifie (non justifié) → 0
+ *
+ * Congés non justifiés (congesolde.congenonjustifie = jours restants) :
+ * - Janvier : réinitialisation au plafond congeconfig.congenonjustifie pour chaque utilisateur
  */
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<SchedulerResponse>
 ) {
-  // Vérifier que c'est une requête POST (pour sécurité, peut être appelée par un cron job)
   if (req.method !== 'POST') {
     return res.status(405).json({
       success: false,
@@ -34,14 +38,11 @@ export default async function handler(
     });
   }
 
-  // Vérifier une clé secrète pour sécuriser l'endpoint (optionnel mais recommandé)
-  // Permettre aussi l'accès sans secret en développement
   const { secret } = req.body || req.query || {};
   const expectedSecret =
     process.env.SCHEDULER_SECRET || 'default-secret-change-me';
   const isDevelopment = process.env.NODE_ENV === 'development';
 
-  // En production, exiger le secret ; en développement, le secret est optionnel
   if (!isDevelopment && secret !== expectedSecret) {
     return res.status(401).json({
       success: false,
@@ -57,22 +58,8 @@ export default async function handler(
       });
     }
 
-    const configModel = (prisma as any).congeconfig;
-    const soldeModel = (prisma as any).congesolde;
-    const utilisateurModel = (prisma as any).utilisateurs;
-
-    if (!configModel || !soldeModel || !utilisateurModel) {
-      return res.status(500).json({
-        success: false,
-        message: 'Modèles Prisma introuvables',
-      });
-    }
-
-    // Récupérer la configuration (nbjourMois)
-    const config = await configModel.findFirst({
-      orderBy: {
-        dateupdate: 'desc',
-      },
+    const config = await prisma.congeconfig.findFirst({
+      orderBy: { dateupdate: 'desc' },
     });
 
     if (!config || !config.nbjourMois) {
@@ -91,9 +78,14 @@ export default async function handler(
       });
     }
 
-    // Obtenir la date actuelle
+    const plafondNJRaw = config.congenonjustifie;
+    const plafondNJ =
+      plafondNJRaw != null && Number.isFinite(Number(plafondNJRaw))
+        ? Math.max(0, Number(plafondNJRaw))
+        : 0;
+
     const now = new Date();
-    const currentMonth = now.getMonth() + 1; // 1-12 (janvier = 1, décembre = 12)
+    const currentMonth = now.getMonth() + 1;
     const monthNames = [
       'Janvier',
       'Février',
@@ -110,17 +102,12 @@ export default async function handler(
     ];
 
     console.log(
-      `📅 Traitement du scheduler pour le mois ${currentMonth} (${monthNames[currentMonth - 1]})`
+      `📅 Scheduler congé — mois ${currentMonth} (${monthNames[currentMonth - 1]})`
     );
 
-    // Récupérer tous les utilisateurs actifs
-    const utilisateurs = await utilisateurModel.findMany({
-      where: {
-        locked: false, // Seulement les utilisateurs non bloqués
-      },
-      select: {
-        id: true,
-      },
+    const utilisateurs = await prisma.utilisateurs.findMany({
+      where: { locked: false },
+      select: { id: true },
     });
 
     if (utilisateurs.length === 0) {
@@ -133,6 +120,7 @@ export default async function handler(
           nbjourMois: nbjourMois,
           joursAjoutes: 0,
           utilisateursTraites: 0,
+          plafondNonJustifie: plafondNJ,
         },
       });
     }
@@ -141,183 +129,200 @@ export default async function handler(
     let utilisateursTraites = 0;
     let totalSoldesResets = 0;
 
-    // Logique selon le mois
     if (currentMonth === 12) {
-      // DÉCEMBRE : Remettre tous les soldes à 0
-      console.log('🔄 Décembre : Remise à zéro de tous les soldes');
+      console.log('🔄 Décembre : soldes congé à 0 + reset jours non justifiés');
 
       for (const utilisateur of utilisateurs) {
-        const userId = BigInt(utilisateur.id);
+        const userId = utilisateur.id;
 
         try {
-          // Trouver ou créer le solde pour cet utilisateur
-          const soldeExistant = await soldeModel.findFirst({
-            where: {
-              fkUtilisateur: userId,
-            },
+          const soldeExistant = await prisma.congesolde.findFirst({
+            where: { fkUtilisateur: userId },
           });
 
           if (soldeExistant) {
-            await soldeModel.update({
-              where: {
-                id: soldeExistant.id,
-              },
+            await prisma.congesolde.update({
+              where: { id: soldeExistant.id },
               data: {
                 solde: 0,
                 soldeConsomme: 0,
+                congenonjustifie: 0,
                 dateupdate: now,
               },
             });
             totalSoldesResets++;
           } else {
-            // Créer un solde initialisé à 0 si n'existe pas
-            await soldeModel.create({
+            await prisma.congesolde.create({
               data: {
                 fkUtilisateur: userId,
                 solde: 0,
                 soldeConsomme: 0,
+                congenonjustifie: 0,
                 usercreateid: userId,
                 userupdateid: userId,
               },
             });
             totalSoldesResets++;
           }
-        } catch (error: any) {
+        } catch (error: unknown) {
+          const msg = error instanceof Error ? error.message : String(error);
           console.error(
-            `❌ Erreur lors de la remise à zéro du solde pour l'utilisateur ${utilisateur.id}:`,
-            error?.message || error
+            `❌ Erreur solde utilisateur ${utilisateur.id}:`,
+            msg
           );
-          // Continue avec les autres utilisateurs même en cas d'erreur
         }
       }
 
       utilisateursTraites = utilisateurs.length;
 
+      return res.status(200).json({
+        success: true,
+        message: `Décembre : soldes remis à zéro et jours non justifiés à 0`,
+        details: {
+          month: currentMonth,
+          monthName: monthNames[currentMonth - 1],
+          nbjourMois: nbjourMois,
+          joursAjoutes: 0,
+          utilisateursTraites,
+          totalSoldesResets,
+          plafondNonJustifie: plafondNJ,
+        },
+      });
+    }
+
+    if (currentMonth === 1) {
       console.log(
-        `✅ ${totalSoldesResets} solde(s) remis à zéro pour décembre`
+        `📊 Janvier : plafond congés non justifiés = ${plafondNJ} (pas d’ajout de jours de congé)`
       );
 
-      return res.status(200).json({
-        success: true,
-        message: `Tous les soldes ont été remis à zéro pour décembre`,
-        details: {
-          month: currentMonth,
-          monthName: monthNames[currentMonth - 1],
-          nbjourMois: nbjourMois,
-          joursAjoutes: 0,
-          utilisateursTraites: utilisateursTraites,
-          totalSoldesResets: totalSoldesResets,
-        },
-      });
-    } else if (currentMonth === 1) {
-      // JANVIER : Ne rien ajouter
-      console.log('📊 Janvier : Aucun ajout de jours (règle spéciale)');
-
-      return res.status(200).json({
-        success: true,
-        message: 'Janvier : Aucun jour ajouté (sera compensé en novembre)',
-        details: {
-          month: currentMonth,
-          monthName: monthNames[currentMonth - 1],
-          nbjourMois: nbjourMois,
-          joursAjoutes: 0,
-          utilisateursTraites: utilisateurs.length,
-        },
-      });
-    } else {
-      // FÉVRIER à OCTOBRE : Ajouter nbjourMois
-      // NOVEMBRE : Ajouter nbjourMois * 2 (car rien en janvier)
-
-      let joursAAjouter = nbjourMois;
-      if (currentMonth === 11) {
-        // Novembre : ajouter le double (janvier manqué)
-        joursAAjouter = nbjourMois * 2;
-        console.log(
-          `📊 Novembre : Ajout de ${joursAAjouter} jours (${nbjourMois} * 2) à chaque utilisateur`
-        );
-      } else {
-        console.log(
-          `📊 ${monthNames[currentMonth - 1]} : Ajout de ${joursAAjouter} jours à chaque utilisateur`
-        );
-      }
-
       for (const utilisateur of utilisateurs) {
-        const userId = BigInt(utilisateur.id);
+        const userId = utilisateur.id;
 
         try {
-          // Trouver ou créer le solde pour cet utilisateur
-          const soldeExistant = await soldeModel.findFirst({
-            where: {
-              fkUtilisateur: userId,
-            },
+          const soldeExistant = await prisma.congesolde.findFirst({
+            where: { fkUtilisateur: userId },
           });
 
           if (soldeExistant) {
-            // Mettre à jour le solde existant
-            const soldeActuel = Number(soldeExistant.solde) || 0;
-            const nouveauSolde = soldeActuel + joursAAjouter;
-
-            await soldeModel.update({
-              where: {
-                id: soldeExistant.id,
-              },
+            await prisma.congesolde.update({
+              where: { id: soldeExistant.id },
               data: {
-                solde: nouveauSolde,
+                congenonjustifie: plafondNJ,
                 dateupdate: now,
               },
             });
-
-            joursAjoutes += joursAAjouter;
-            utilisateursTraites++;
           } else {
-            // Créer un nouveau solde si n'existe pas
-            await soldeModel.create({
+            await prisma.congesolde.create({
               data: {
                 fkUtilisateur: userId,
-                solde: joursAAjouter,
+                solde: 0,
                 soldeConsomme: 0,
+                congenonjustifie: plafondNJ,
                 usercreateid: userId,
                 userupdateid: userId,
               },
             });
-
-            joursAjoutes += joursAAjouter;
-            utilisateursTraites++;
           }
-        } catch (error: any) {
+          utilisateursTraites++;
+        } catch (error: unknown) {
+          const msg = error instanceof Error ? error.message : String(error);
           console.error(
-            `❌ Erreur lors de la mise à jour du solde pour l'utilisateur ${utilisateur.id}:`,
-            error?.message || error
+            `❌ Erreur reset NJ utilisateur ${utilisateur.id}:`,
+            msg
           );
-          // Continue avec les autres utilisateurs même en cas d'erreur
         }
       }
 
-      console.log(
-        `✅ ${utilisateursTraites} utilisateur(s) traité(s). Total de ${joursAjoutes} jour(s) ajouté(s) pour ${monthNames[currentMonth - 1]}`
-      );
-
       return res.status(200).json({
         success: true,
-        message: `${joursAjoutes} jour(s) ajouté(s) à ${utilisateursTraites} utilisateur(s) pour ${monthNames[currentMonth - 1]}`,
+        message: `Janvier : plafond jours non justifiés réinitialisé (${plafondNJ} j.) ; aucun jour de congé ajouté`,
         details: {
           month: currentMonth,
           monthName: monthNames[currentMonth - 1],
           nbjourMois: nbjourMois,
-          joursAjoutes: joursAjoutes,
-          utilisateursTraites: utilisateursTraites,
+          joursAjoutes: 0,
+          utilisateursTraites,
+          plafondNonJustifie: plafondNJ,
         },
       });
     }
-  } catch (error: any) {
-    console.error(
-      '❌ Erreur lors de la mise à jour mensuelle des soldes:',
-      error
-    );
+
+    let joursAAjouter = nbjourMois;
+    if (currentMonth === 11) {
+      joursAAjouter = nbjourMois * 2;
+      console.log(
+        `📊 Novembre : +${joursAAjouter} j. / utilisateur (${nbjourMois} × 2)`
+      );
+    } else {
+      console.log(
+        `📊 ${monthNames[currentMonth - 1]} : +${joursAAjouter} j. / utilisateur`
+      );
+    }
+
+    for (const utilisateur of utilisateurs) {
+      const userId = utilisateur.id;
+
+      try {
+        const soldeExistant = await prisma.congesolde.findFirst({
+          where: { fkUtilisateur: userId },
+        });
+
+        if (soldeExistant) {
+          const soldeActuel = Number(soldeExistant.solde) || 0;
+          const nouveauSolde = soldeActuel + joursAAjouter;
+
+          await prisma.congesolde.update({
+            where: { id: soldeExistant.id },
+            data: {
+              solde: nouveauSolde,
+              dateupdate: now,
+            },
+          });
+
+          joursAjoutes += joursAAjouter;
+          utilisateursTraites++;
+        } else {
+          await prisma.congesolde.create({
+            data: {
+              fkUtilisateur: userId,
+              solde: joursAAjouter,
+              soldeConsomme: 0,
+              congenonjustifie: plafondNJ,
+              usercreateid: userId,
+              userupdateid: userId,
+            },
+          });
+
+          joursAjoutes += joursAAjouter;
+          utilisateursTraites++;
+        }
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : String(error);
+        console.error(
+          `❌ Erreur mise à jour solde utilisateur ${utilisateur.id}:`,
+          msg
+        );
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `${joursAjoutes} jour(s) ajouté(s) à ${utilisateursTraites} utilisateur(s) — ${monthNames[currentMonth - 1]}`,
+      details: {
+        month: currentMonth,
+        monthName: monthNames[currentMonth - 1],
+        nbjourMois: nbjourMois,
+        joursAjoutes,
+        utilisateursTraites,
+        plafondNonJustifie: plafondNJ,
+      },
+    });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('❌ Erreur scheduler congé:', error);
     return res.status(500).json({
       success: false,
-      message:
-        error?.message || 'Erreur serveur lors de la mise à jour mensuelle',
+      message: msg || 'Erreur serveur lors de la mise à jour mensuelle',
     });
   }
 }

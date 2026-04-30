@@ -1,4 +1,6 @@
+import { requireApiPermissions } from '@/lib/api-auth';
 import { prisma } from '@/lib/prisma';
+import { API_ADMIN } from '@/lib/rbac';
 import { NextApiRequest, NextApiResponse } from 'next';
 
 interface Data {
@@ -21,6 +23,11 @@ export default async function handler(
   }
 
   try {
+    const authUser = await requireApiPermissions(req, res, [
+      ...API_ADMIN.services,
+    ]);
+    if (!authUser) return;
+
     console.log('🔍 API Service [id] - Méthode:', req.method);
     console.log('🔍 API Service [id] - ID:', id);
 

@@ -1,6 +1,11 @@
 import Button from '@/components/ui/Button';
 import NotificationBell from '@/components/ui/NotificationBell';
-import { useAuth } from '@/hooks/useAuth';
+import { useAuth, usePermissions } from '@/hooks/useAuth';
+import {
+  ADMIN_ZONE_PERMISSIONS,
+  API_ADMIN,
+  PERMISSIONS,
+} from '@/lib/rbac';
 import { cn } from '@/lib/utils';
 import {
   ArrowRightOnRectangleIcon,
@@ -23,12 +28,20 @@ interface AppShellProps {
   children: React.ReactNode;
 }
 
+type ShellNavItem = {
+  name: string;
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+  current: boolean;
+  /** Si défini : au moins une permission requise */
+  anyOf?: string[];
+};
+
 const AppShell: React.FC<AppShellProps> = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { user, logout } = useAuth();
-  // Désactivé en mode développement pour éviter les re-rendus
-  // const { services } = usePermissions();
-  const services = ['*']; // Services statiques
+  const { hasAnyPermission } = usePermissions();
+  const serviceIds = user?.services ?? [];
   const router = useRouter();
 
   // Détermine la section courante et construit un menu dynamique et centralisé
@@ -40,23 +53,26 @@ const AppShell: React.FC<AppShellProps> = ({ children }) => {
       ? 'personnel'
       : 'home';
 
-  const canAdmin = (user?.permissions || []).includes('MODULE_ADMIN');
-  const canPersonnel = (user?.permissions || []).includes('MODULE_PERSONNEL');
+  const isPersonnelAdminRoute = router.pathname.startsWith(
+    '/admin/personnel'
+  );
+  const canShowAdminNav = isPersonnelAdminRoute
+    ? hasAnyPermission([...API_ADMIN.personnel])
+    : hasAnyPermission(ADMIN_ZONE_PERMISSIONS);
+  const canPersonnel = hasAnyPermission([
+    PERMISSIONS.MODULE_PERSONNEL,
+    PERMISSIONS.MODULE_ADMIN,
+  ]);
 
   const handleLogout = async () => {
     await logout();
     router.push('/');
   };
 
-  let navigation: Array<{
-    name: string;
-    href: string;
-    icon: any;
-    current: boolean;
-  }>;
+  let navigation: ShellNavItem[];
 
-  if (section === 'admin' && canAdmin) {
-    navigation = [
+  if (section === 'admin' && canShowAdminNav) {
+    const adminCandidates: ShellNavItem[] = [
       {
         name: 'Retour Accueil',
         href: '/home',
@@ -68,38 +84,51 @@ const AppShell: React.FC<AppShellProps> = ({ children }) => {
         href: '/admin/sites',
         icon: BuildingOfficeIcon,
         current: router.pathname.startsWith('/admin/sites'),
+        anyOf: [
+          PERMISSIONS.SITE_MANAGE,
+          PERMISSIONS.ITEM_SITES,
+          PERMISSIONS.MODULE_ADMIN,
+        ],
       },
       {
         name: 'Services',
         href: '/admin/services',
         icon: Cog6ToothIcon,
         current: router.pathname.startsWith('/admin/services'),
+        anyOf: [PERMISSIONS.SERVICE_MANAGE, PERMISSIONS.MODULE_ADMIN],
       },
       {
         name: 'Rôles',
         href: '/admin/roles',
         icon: ShieldCheckIcon,
         current: router.pathname.startsWith('/admin/roles'),
+        anyOf: [PERMISSIONS.ROLE_MANAGE, PERMISSIONS.MODULE_ADMIN],
       },
       {
         name: 'Droits Rôles',
         href: '/admin/roles-permissions',
         icon: ShieldCheckIcon,
         current: router.pathname.startsWith('/admin/roles-permissions'),
+        anyOf: [PERMISSIONS.ROLE_MANAGE, PERMISSIONS.MODULE_ADMIN],
       },
       {
         name: 'Utilisateurs',
         href: '/admin/utilisateurs',
         icon: UserIcon,
         current: router.pathname.startsWith('/admin/utilisateurs'),
+        anyOf: [PERMISSIONS.USER_MANAGE, PERMISSIONS.MODULE_ADMIN],
       },
       {
         name: 'Droits Services',
         href: '/admin/droits-services',
         icon: UserGroupIcon,
         current: router.pathname.startsWith('/admin/droits-services'),
+        anyOf: [PERMISSIONS.USER_MANAGE, PERMISSIONS.MODULE_ADMIN],
       },
     ];
+    navigation = adminCandidates.filter(
+      (i) => !i.anyOf?.length || hasAnyPermission(i.anyOf)
+    );
   } else if (section === 'personnel' && canPersonnel) {
     navigation = [
       {
@@ -160,7 +189,7 @@ const AppShell: React.FC<AppShellProps> = ({ children }) => {
         icon: UserIcon,
         current: router.pathname === '/home',
       },
-      ...(canAdmin
+      ...(hasAnyPermission(ADMIN_ZONE_PERMISSIONS)
         ? [
             {
               name: 'Administration',
@@ -215,7 +244,7 @@ const AppShell: React.FC<AppShellProps> = ({ children }) => {
           <SidebarContent
             navigation={navigation}
             user={user}
-            services={services}
+            serviceIds={serviceIds}
             userDisplayName={userDisplayName}
             onLogout={handleLogout}
           />
@@ -228,7 +257,7 @@ const AppShell: React.FC<AppShellProps> = ({ children }) => {
           <SidebarContent
             navigation={navigation}
             user={user}
-            services={services}
+            serviceIds={serviceIds}
             userDisplayName={userDisplayName}
             onLogout={handleLogout}
           />
@@ -263,8 +292,9 @@ const AppShell: React.FC<AppShellProps> = ({ children }) => {
                 <div className="text-sm text-gray-700">
                   <div className="font-medium">{userDisplayName}</div>
                   <div className="text-gray-500">
-                    {services.length} service{services.length > 1 ? 's' : ''}{' '}
-                    autorisé{services.length > 1 ? 's' : ''}
+                    {serviceIds.length} service
+                    {serviceIds.length > 1 ? 's' : ''} autorisé
+                    {serviceIds.length > 1 ? 's' : ''}
                   </div>
                 </div>
 
@@ -296,14 +326,9 @@ const AppShell: React.FC<AppShellProps> = ({ children }) => {
 };
 
 interface SidebarContentProps {
-  navigation: Array<{
-    name: string;
-    href: string;
-    icon: React.ComponentType<{ className?: string }>;
-    current: boolean;
-  }>;
+  navigation: ShellNavItem[];
   user: any;
-  services: number[];
+  serviceIds: number[];
   userDisplayName: string;
   onLogout: () => void;
 }
@@ -311,7 +336,7 @@ interface SidebarContentProps {
 const SidebarContent: React.FC<SidebarContentProps> = ({
   navigation,
   user,
-  services,
+  serviceIds,
   userDisplayName,
   onLogout,
 }) => {
@@ -371,8 +396,9 @@ const SidebarContent: React.FC<SidebarContentProps> = ({
                 {userDisplayName}
               </p>
               <p className="text-xs text-primary-200">
-                {services.length} service{services.length > 1 ? 's' : ''}{' '}
-                autorisé{services.length > 1 ? 's' : ''}
+                {serviceIds.length} service
+                {serviceIds.length > 1 ? 's' : ''} autorisé
+                {serviceIds.length > 1 ? 's' : ''}
               </p>
             </div>
           </div>

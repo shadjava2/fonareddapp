@@ -1,9 +1,10 @@
 import DemandeCongeForm from '@/components/forms/DemandeCongeForm';
 import CongeAppShell from '@/components/layout/CongeAppShell';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
-import { useAuth } from '@/hooks/useAuth';
+import { useAuth, usePermissions } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/useToast';
 import { apiGet, apiPost, apiPut } from '@/lib/fetcher';
+import { PERMISSIONS } from '@/lib/rbac';
 import {
   DocumentTextIcon,
   PlusIcon,
@@ -40,7 +41,8 @@ interface TypeConge {
 
 const DemandeCongePage: React.FC = () => {
   const { showSuccess, showError } = useToast();
-  const { user } = useAuth();
+  useAuth();
+  const { hasAnyPermission } = usePermissions();
   const [demandes, setDemandes] = useState<DemandeConge[]>([]);
   const [typesConges, setTypesConges] = useState<TypeConge[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,12 +57,17 @@ const DemandeCongePage: React.FC = () => {
   const [showAnnulerDialog, setShowAnnulerDialog] = useState(false);
   const [isAnnulating, setIsAnnulating] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [showOnlyMine, setShowOnlyMine] = useState(false);
+  const [showAllDemandes, setShowAllDemandes] = useState(false);
+  const canToggleAllDemandes = hasAnyPermission([
+    PERMISSIONS.CONGE_DEMANDES_ALL,
+    PERMISSIONS.CONGE_TRAITEMENT,
+    PERMISSIONS.MODULE_ADMIN,
+  ]);
 
   useEffect(() => {
     fetchDemandes();
     fetchTypesConges();
-  }, []);
+  }, [showAllDemandes, canToggleAllDemandes]);
 
   const fetchDemandes = async () => {
     try {
@@ -68,7 +75,7 @@ const DemandeCongePage: React.FC = () => {
       const response = await apiGet<{
         success: boolean;
         demandes: DemandeConge[];
-      }>('/api/conge/demandes');
+      }>(`/api/conge/demandes?all=${showAllDemandes && canToggleAllDemandes}`);
       if (response.success) {
         setDemandes(
           response.demandes.map((demande) => ({
@@ -288,20 +295,26 @@ const DemandeCongePage: React.FC = () => {
 
         if (allTraitementsData.success && allTraitementsData.traitements) {
           allTraitementsForDemande = allTraitementsData.traitements.filter(
-            (t: any) => t.fkDemande === demande.id
+            (t: any) =>
+              Number.parseInt(String(t.fkDemande), 10) ===
+              Number.parseInt(String(demande.id), 10)
           );
         } else {
           // Fallback: utiliser les traitements filtrés
           allTraitementsForDemande =
             traitementsResponse.traitements?.filter(
-              (t) => t.fkDemande === demande.id
+              (t) =>
+                Number.parseInt(String(t.fkDemande), 10) ===
+                Number.parseInt(String(demande.id), 10)
             ) || [];
         }
       } catch (err) {
         // Fallback en cas d'erreur
         allTraitementsForDemande =
           traitementsResponse.traitements?.filter(
-            (t) => t.fkDemande === demande.id
+            (t) =>
+              Number.parseInt(String(t.fkDemande), 10) ===
+              Number.parseInt(String(demande.id), 10)
           ) || [];
       }
 
@@ -309,7 +322,7 @@ const DemandeCongePage: React.FC = () => {
       const traitementsByPhase = new Map<number, any>();
       allTraitementsForDemande.forEach((t: any) => {
         if (t.fkPhase) {
-          traitementsByPhase.set(t.fkPhase, t);
+          traitementsByPhase.set(Number.parseInt(String(t.fkPhase), 10), t);
         }
       });
 
@@ -722,17 +735,6 @@ const DemandeCongePage: React.FC = () => {
   // Filtrer et trier les demandes (plus récents en premier)
   const filteredDemandes = demandes
     .filter((demande) => {
-      // Filtrer par "Mes demandes" si activé
-      if (showOnlyMine && user) {
-        const userId = Number(user.id);
-        const demandeUserId = demande.usercreateid
-          ? Number(demande.usercreateid)
-          : null;
-        if (demandeUserId !== userId) {
-          return false;
-        }
-      }
-
       // Filtrer par terme de recherche
       if (searchTerm) {
         return (
@@ -802,15 +804,19 @@ const DemandeCongePage: React.FC = () => {
               </div>
               <div className="flex items-center">
                 <label className="flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={showOnlyMine}
-                    onChange={(e) => setShowOnlyMine(e.target.checked)}
-                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                  />
-                  <span className="ml-2 text-sm text-gray-700">
-                    Mes demandes uniquement
-                  </span>
+                  {canToggleAllDemandes && (
+                    <>
+                      <input
+                        type="checkbox"
+                        checked={showAllDemandes}
+                        onChange={(e) => setShowAllDemandes(e.target.checked)}
+                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                      />
+                      <span className="ml-2 text-sm text-gray-700">
+                        Tout afficher
+                      </span>
+                    </>
+                  )}
                 </label>
               </div>
             </div>

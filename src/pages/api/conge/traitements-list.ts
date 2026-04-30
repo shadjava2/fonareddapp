@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma';
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { broadcastToUser } from '../notifications/stream';
 
+const TRAITEMENT_VIEW_ALL_ROLE_IDS = new Set(['11', '12', '17']);
+
 function formatRow(row: any) {
   const result: any = {};
   for (const key in row) {
@@ -174,6 +176,21 @@ async function canProcessPhase(
 
   // Pour les autres phases : vérifier que toutes les phases inférieures sont traitées
   if (currentPhase > 1) {
+    // Règle métier: le remplaçant (phase 1) doit explicitement valider (approbation=true)
+    // avant tout traitement des phases suivantes.
+    const remplacementPhase = allTraitements.find(
+      (t: any) => t.fkPhase && Number(t.fkPhase) === 1
+    );
+    const remplacementValide =
+      !!remplacementPhase?.observations && remplacementPhase?.approbation === true;
+    if (!remplacementValide) {
+      return {
+        canProcess: false,
+        message:
+          "Le remplaçant n'a pas encore validé cette demande. Traitement impossible tant que la validation du remplaçant n'est pas effectuée.",
+      };
+    }
+
     for (let phase = 1; phase < currentPhase; phase++) {
       const traitement = allTraitements.find(
         (t: any) => t.fkPhase && Number(t.fkPhase) === phase
@@ -215,18 +232,6 @@ export default async function handler(
   let currentUser = null;
   if (token) {
     currentUser = await getUserFromToken(token);
-  }
-
-  // Si pas de token en dev, utiliser un utilisateur par défaut
-  if (!currentUser && process.env.NODE_ENV === 'development') {
-    currentUser = {
-      id: 1,
-      nom: 'Admin',
-      prenom: 'Dev',
-      username: 'admin',
-      permissions: ['*'],
-      services: ['*'],
-    } as any;
   }
 
   if (!currentUser) {
@@ -415,9 +420,14 @@ export default async function handler(
           },
         });
       } else {
-        // Sinon, filtrer par userupdateid = ID de l'utilisateur connecté (pour l'affichage normal)
-        const userId = BigInt(currentUser.id);
-        where.userupdateid = userId;
+        // Par défaut, filtrer sur l'utilisateur connecté.
+        // Exception métier: Coordonnateurs (rôles 11, 12, 17) voient tous les traitements.
+        const roleId = String((currentUser as any).fkRole ?? '');
+        const canViewAllTraitements = TRAITEMENT_VIEW_ALL_ROLE_IDS.has(roleId);
+        if (!canViewAllTraitements) {
+          const userId = BigInt(currentUser.id);
+          where.userupdateid = userId;
+        }
 
         // Ajouter la recherche si présente (seulement si pas de demandeId)
         if (search) {
@@ -632,6 +642,7 @@ export default async function handler(
 
       const { fkDemande, fkPhase, observations, conformite, approbation } =
         req.body || {};
+      const isRole5Personnel = String((currentUser as any).fkRole ?? '') === '5';
 
       // Vérifier que le traitement appartient à l'utilisateur connecté
       const existing = await model.findUnique({
@@ -695,7 +706,9 @@ export default async function handler(
             : '-';
       }
       if (typeof conformite !== 'undefined') {
-        updateData.conformite = conformite;
+        if (isRole5Personnel) {
+          updateData.conformite = conformite;
+        }
       }
       if (typeof approbation !== 'undefined') {
         updateData.approbation = approbation;

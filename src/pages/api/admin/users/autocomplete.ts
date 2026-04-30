@@ -1,4 +1,6 @@
+import { requireApiPermissions } from '@/lib/api-auth';
 import { prisma } from '@/lib/prisma';
+import { API_ADMIN, PERMISSIONS } from '@/lib/rbac';
 import { NextApiRequest, NextApiResponse } from 'next';
 
 interface AutocompleteUser {
@@ -19,6 +21,20 @@ export default async function handler(
   }
 
   try {
+    const authUser = await requireApiPermissions(req, res as any, [
+      ...API_ADMIN.users,
+      PERMISSIONS.CONGE_REQUEST,
+      PERMISSIONS.CONGE_RETURN,
+      PERMISSIONS.CONGE_TRAITEMENT,
+      PERMISSIONS.CONGE_CONFIG,
+      PERMISSIONS.CONGE_TYPES,
+      PERMISSIONS.CONGE_NON_JUSTIFIE,
+      PERMISSIONS.CONGE_NOTIFICATIONS,
+      PERMISSIONS.MODULE_CONGE,
+      PERMISSIONS.MODULE_ADMIN,
+    ]);
+    if (!authUser) return;
+
     const search = (req.query.q as string) || '';
     const limit = req.query.limit ? parseInt(req.query.limit as string) : 200;
 

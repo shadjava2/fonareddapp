@@ -88,8 +88,13 @@ const IndexPage: React.FC = () => {
         // Stocker le token dans un cookie
         document.cookie = `authToken=${response.token}; path=/; max-age=43200; samesite=strict`;
 
-        // Mettre à jour l'état utilisateur
-        setUser(response.user);
+        setUser({
+          ...response.user,
+          permissions: response.user.permissions ?? [],
+          services: Array.isArray(response.user.services)
+            ? response.user.services.map(Number)
+            : [],
+        });
 
         showToast({
           type: 'success',

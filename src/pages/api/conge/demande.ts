@@ -1,6 +1,7 @@
 import { getTokenFromRequest, getUserFromToken } from '@/lib/auth';
 import { createPaginatedResponse, getPaginationParams } from '@/lib/pagination';
 import { prisma } from '@/lib/prisma';
+import { hasAnyPermission, PERMISSIONS } from '@/lib/rbac';
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 interface DemandeResponse {
@@ -28,7 +29,11 @@ export default async function handler(
   try {
     if (req.method === 'GET') {
       // Vérifier les permissions pour voir toutes les demandes
-      const canViewAll = user.permissions.includes('CONGE_MANAGE');
+      const canViewAll = hasAnyPermission(user as any, [
+        PERMISSIONS.CONGE_DEMANDES_ALL,
+        PERMISSIONS.CONGE_TRAITEMENT,
+        PERMISSIONS.MODULE_ADMIN,
+      ]);
 
       const { skip, take, page, size, search } = getPaginationParams(req.query);
 
@@ -190,7 +195,12 @@ export default async function handler(
 
     if (req.method === 'PUT') {
       // Vérifier les permissions pour modifier une demande
-      if (!user.permissions.includes('CONGE_MANAGE')) {
+      if (
+        !hasAnyPermission(user as any, [
+          PERMISSIONS.CONGE_TRAITEMENT,
+          PERMISSIONS.MODULE_ADMIN,
+        ])
+      ) {
         return res.status(403).json({
           success: false,
           message: 'Permissions insuffisantes pour modifier une demande',

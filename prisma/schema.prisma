@@ -5,7 +5,6 @@ generator client {
 
 datasource db {
   provider = "mysql"
-  url      = env("DATABASE_URL")
 }
 
 model utilisateurs {
@@ -31,6 +30,7 @@ model utilisateurs {
   role                  roles?                   @relation(fields: [fkRole], references: [id])
   droitsServices        droits_services[]
   connexionHistoriques  ConnexionHistorique[]
+  retraitsNonJustifies  CongeNonJustifieRetrait[]
 
   @@index([fkRole, id], map: "fkroleindexuser")
   @@index([fkFonction], map: "fkfonctionindexuser")
@@ -185,12 +185,14 @@ model calendrier {
 }
 
 model congeconfig {
-  id           BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
-  nbjourMois   Float    @unique(map: "UNIQUEROLE") @db.Float
-  datecreate   DateTime @default(now()) @db.Timestamp(0)
-  dateupdate   DateTime @default(now()) @updatedAt @db.Timestamp(0)
-  usercreateid BigInt?  @db.UnsignedBigInt
-  userupdateid BigInt?  @db.UnsignedBigInt
+  id               BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  nbjourMois       Float    @unique(map: "UNIQUEROLE") @db.Float
+  /// Plafond annuel de jours de congé non justifié autorisés (réinitialisé en janvier sur congesolde)
+  congenonjustifie Float?   @db.Float
+  datecreate       DateTime @default(now()) @db.Timestamp(0)
+  dateupdate       DateTime @default(now()) @updatedAt @db.Timestamp(0)
+  usercreateid     BigInt?  @db.UnsignedBigInt
+  userupdateid     BigInt?  @db.UnsignedBigInt
 
   @@index([id], map: "ndex_role_unique")
   @@map("congeconfig")
@@ -220,16 +222,35 @@ model congedemande {
 }
 
 model congesolde {
-  id            BigInt    @id @default(autoincrement())
-  fkUtilisateur BigInt?
-  solde         Float?    @db.Float
-  soldeConsomme Float?    @db.Float
-  datecreate    DateTime  @default(now()) @db.Timestamp(0)
-  dateupdate    DateTime? @default(now()) @updatedAt @db.Timestamp(0)
-  usercreateid  BigInt?
-  userupdateid  BigInt?
+  id               BigInt    @id @default(autoincrement())
+  fkUtilisateur    BigInt?
+  solde            Float?    @db.Float
+  soldeConsomme    Float?    @db.Float
+  /// Jours non justifiés restants sur l’année (décrémenté à chaque retrait ; reset janvier / décembre selon scheduler)
+  congenonjustifie Float?    @db.Float
+  datecreate       DateTime  @default(now()) @db.Timestamp(0)
+  dateupdate       DateTime? @default(now()) @updatedAt @db.Timestamp(0)
+  usercreateid     BigInt?
+  userupdateid     BigInt?
 
   @@map("congesolde")
+}
+
+/// Historique des retraits de congés non justifiés
+model CongeNonJustifieRetrait {
+  id             BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  fkUtilisateur  BigInt   @db.UnsignedBigInt
+  nbrjours       Float    @db.Float
+  commentaire    String?  @db.VarChar(500)
+  resteApres     Float?   @db.Float
+  datecreate     DateTime @default(now()) @db.Timestamp(0)
+  usercreateid   BigInt?  @db.UnsignedBigInt
+
+  utilisateur utilisateurs @relation(fields: [fkUtilisateur], references: [id], onDelete: Cascade)
+
+  @@index([fkUtilisateur], map: "fk_nj_user")
+  @@index([datecreate], map: "idx_nj_date")
+  @@map("congenonjustifie_retrait")
 }
 
 model retourconge {

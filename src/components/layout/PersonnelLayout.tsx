@@ -1,4 +1,7 @@
+import { useAuth, usePermissions } from '@/hooks/useAuth';
 import { apiGet } from '@/lib/fetcher';
+import { PERMISSIONS } from '@/lib/rbac';
+import Link from 'next/link';
 import React, { useEffect, useState } from 'react';
 import PersonnelSidebar from './PersonnelSidebar';
 
@@ -51,6 +54,39 @@ const PersonnelLayout: React.FC<PersonnelLayoutProps> = ({
   const readerLabel = readerConfig
     ? `Lecteur: ${readerConfig.ip}${portSuffix}`
     : 'Lecteur: —';
+
+  const { user, loading } = useAuth();
+  const { hasAnyPermission } = usePermissions();
+  const allowed = hasAnyPermission([
+    PERMISSIONS.MODULE_PERSONNEL,
+    PERMISSIONS.MODULE_ADMIN,
+  ]);
+
+  if (!loading && (!user || !allowed)) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-gray-50 px-4 text-center">
+        <p className="text-sm text-gray-700">
+          {!user
+            ? 'Connexion requise pour le module personnel.'
+            : 'Votre rôle ne permet pas d’accéder au module personnel.'}
+        </p>
+        <Link
+          href="/home"
+          className="text-sm font-medium text-blue-600 hover:text-blue-800"
+        >
+          Retour au tableau de bord
+        </Link>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <p className="text-sm text-gray-500">Chargement…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">

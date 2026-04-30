@@ -1,5 +1,8 @@
 import { useAlarm } from '@/contexts/AlarmContext';
 import { useTraitementCount } from '@/hooks/useTraitementCount';
+import { usePermissions } from '@/hooks/useAuth';
+import { PERMISSIONS } from '@/lib/rbac';
+import { cn } from '@/lib/utils';
 import {
   ArrowUturnLeftIcon,
   BellIcon,
@@ -7,6 +10,7 @@ import {
   ClipboardDocumentCheckIcon,
   CogIcon,
   DocumentTextIcon,
+  ExclamationTriangleIcon,
   HomeIcon,
   UserGroupIcon,
 } from '@heroicons/react/24/outline';
@@ -14,7 +18,6 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import React from 'react';
-import { cn } from '../../lib/utils';
 
 interface NavigationItem {
   name: string;
@@ -22,69 +25,101 @@ interface NavigationItem {
   icon: React.ComponentType<{ className?: string }>;
   current: boolean;
   count?: number;
+  anyOf: string[];
 }
+
+const A = PERMISSIONS;
 
 const CongeSidebar: React.FC = React.memo(() => {
   const router = useRouter();
   const notificationCount = useTraitementCount();
   const { isAlarmPlaying } = useAlarm();
+  const { hasAnyPermission } = usePermissions();
   const isPageOpen = router.pathname === '/conge/traitement-demandes';
 
-  const navigation: NavigationItem[] = [
+  const navDefs: NavigationItem[] = [
     {
       name: 'Tableau de bord',
       href: '/conge/',
       icon: HomeIcon,
       current: router.pathname === '/conge',
+      anyOf: [
+        A.CONGE_DASHBOARD,
+        A.CONGE_REQUEST,
+        A.CONGE_TRAITEMENT,
+        A.CONGE_CONFIG,
+        A.CONGE_NON_JUSTIFIE,
+        A.CONGE_TYPES,
+        A.CONGE_NOTIFICATIONS,
+        A.CONGE_RETURN,
+        A.CALENDAR_MANAGE,
+        A.MODULE_CONGE,
+        A.MODULE_ADMIN,
+      ],
     },
     {
       name: 'Calendrier Fonaredd',
       href: '/conge/calendrier',
       icon: CalendarDaysIcon,
-      current: router.pathname === '/conge/calendrier',
+      current: router.pathname.startsWith('/conge/calendrier'),
+      anyOf: [A.CALENDAR_MANAGE, A.MODULE_ADMIN],
     },
     {
       name: 'Config Congé',
       href: '/conge/config-conge',
       icon: CogIcon,
-      current: router.pathname === '/conge/config-conge',
+      current: router.pathname.startsWith('/conge/config-conge'),
+      anyOf: [A.CONGE_CONFIG, A.MODULE_ADMIN],
+    },
+    {
+      name: 'Congés non justifiés',
+      href: '/conge/non-justifie',
+      icon: ExclamationTriangleIcon,
+      current: router.pathname.startsWith('/conge/non-justifie'),
+      anyOf: [A.CONGE_NON_JUSTIFIE, A.MODULE_ADMIN],
     },
     {
       name: 'Demande Congé',
       href: '/conge/demandes-conge',
       icon: DocumentTextIcon,
-      current: router.pathname === '/conge/demandes-conge',
+      current: router.pathname.startsWith('/conge/demandes-conge'),
+      anyOf: [A.CONGE_REQUEST, A.MODULE_ADMIN],
     },
     {
       name: 'Traitement Demandes',
       href: '/conge/traitement-demandes',
       icon: ClipboardDocumentCheckIcon,
-      current: router.pathname === '/conge/traitement-demandes',
+      current: router.pathname.startsWith('/conge/traitement-demandes'),
       count: notificationCount,
+      anyOf: [A.CONGE_TRAITEMENT, A.MODULE_ADMIN],
     },
     {
       name: 'Types Congés',
       href: '/conge/types-conges',
       icon: UserGroupIcon,
-      current: router.pathname === '/conge/types-conges',
+      current: router.pathname.startsWith('/conge/types-conges'),
+      anyOf: [A.CONGE_TYPES, A.MODULE_ADMIN],
     },
     {
       name: 'Retour Congé',
       href: '/conge/retour-conge',
       icon: ArrowUturnLeftIcon,
-      current: router.pathname === '/conge/retour-conge',
+      current: router.pathname.startsWith('/conge/retour-conge'),
+      anyOf: [A.CONGE_RETURN, A.MODULE_ADMIN],
     },
     {
       name: 'Historique Notifications',
       href: '/conge/historique-notifications',
       icon: BellIcon,
-      current: router.pathname === '/conge/historique-notifications',
+      current: router.pathname.startsWith('/conge/historique-notifications'),
+      anyOf: [A.CONGE_NOTIFICATIONS, A.MODULE_ADMIN],
     },
   ];
 
+  const navigation = navDefs.filter((item) => hasAnyPermission(item.anyOf));
+
   return (
     <div className="flex flex-col w-64 bg-gray-800">
-      {/* Logo */}
       <div className="flex items-center h-20 px-4 bg-gray-900">
         <div className="flex items-center w-full">
           <div className="flex-shrink-0">
@@ -104,7 +139,6 @@ const CongeSidebar: React.FC = React.memo(() => {
         </div>
       </div>
 
-      {/* Navigation */}
       <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
         {navigation.map((item) => {
           const Icon = item.icon;
@@ -117,7 +151,6 @@ const CongeSidebar: React.FC = React.memo(() => {
                 item.current
                   ? 'bg-indigo-100 text-indigo-900'
                   : 'text-gray-300 hover:bg-gray-700 hover:text-white',
-                // Animation seulement si : compteur > 0, page non ouverte ET alarme active
                 item.count !== undefined &&
                   item.count > 0 &&
                   !item.current &&
@@ -132,7 +165,6 @@ const CongeSidebar: React.FC = React.memo(() => {
                   item.current
                     ? 'text-indigo-500'
                     : 'text-gray-400 group-hover:text-white',
-                  // Animation de l'icône seulement si : compteur > 0, page non ouverte ET alarme active
                   item.count !== undefined &&
                     item.count > 0 &&
                     !item.current &&
@@ -151,7 +183,6 @@ const CongeSidebar: React.FC = React.memo(() => {
                       item.count > 0
                         ? 'bg-red-500 text-white'
                         : 'bg-gray-400 text-white',
-                      // Animation du badge seulement si alarme active et page non ouverte
                       item.count > 0 &&
                         !item.current &&
                         !isPageOpen &&
@@ -168,7 +199,6 @@ const CongeSidebar: React.FC = React.memo(() => {
         })}
       </nav>
 
-      {/* Footer */}
       <div className="px-4 py-4 border-t border-gray-700">
         <Link
           href="/home"

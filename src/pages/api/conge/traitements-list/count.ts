@@ -2,6 +2,8 @@ import { getTokenFromRequest, getUserFromToken } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import type { NextApiRequest, NextApiResponse } from 'next';
 
+const TRAITEMENT_VIEW_ALL_ROLE_IDS = new Set(['11', '12', '17']);
+
 interface CountResponse {
   success: boolean;
   count?: number;
@@ -42,18 +44,6 @@ export default async function handler(
       currentUser = await getUserFromToken(token);
     }
 
-    // En mode développement, permettre de continuer sans token
-    if (!currentUser && process.env.NODE_ENV === 'development') {
-      currentUser = {
-        id: 1,
-        nom: 'Admin',
-        prenom: 'Dev',
-        username: 'admin',
-        permissions: ['*'],
-        services: ['*'],
-      } as any;
-    }
-
     if (!currentUser) {
       return res.status(401).json({
         success: false,
@@ -65,13 +55,15 @@ export default async function handler(
     const userIdParam = req.query.userId;
     const userId = userIdParam ? Number(userIdParam) : currentUser.id;
 
-    // Compter les traitements non traités assignés à cet utilisateur
+    const roleId = String((currentUser as any).fkRole ?? '');
+    const canViewAllTraitements = TRAITEMENT_VIEW_ALL_ROLE_IDS.has(roleId);
+
+    // Compter les traitements non traités (globaux pour rôles coordonnateurs, sinon assignés à l'utilisateur)
     // Un traitement est "non traité" si :
     // - observations est null (pas encore commencé)
     // OU
     // - observations existe mais approbation ET conformite sont tous les deux null
     const where: any = {
-      userupdateid: BigInt(userId),
       OR: [
         // Traitements sans observations (pas encore commencés)
         { observations: null },
@@ -85,6 +77,9 @@ export default async function handler(
         },
       ],
     };
+    if (!canViewAllTraitements) {
+      where.userupdateid = BigInt(userId);
+    }
 
     const count = await model.count({ where });
 

@@ -1,17 +1,47 @@
 import CongeAppShell from '@/components/layout/CongeAppShell';
+import { usePermissions } from '@/hooks/useAuth';
 import {
   ArrowUturnLeftIcon,
   CalendarDaysIcon,
   ClipboardDocumentCheckIcon,
   CogIcon,
   DocumentTextIcon,
+  ExclamationTriangleIcon,
   HomeIcon,
   UserGroupIcon,
 } from '@heroicons/react/24/outline';
+import { formatDecimalFR } from '@/lib/formatDate';
+import { apiGet } from '@/lib/fetcher';
+import { PERMISSIONS } from '@/lib/rbac';
 import Link from 'next/link';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 const CongePage: React.FC = () => {
+  const { hasAnyPermission } = usePermissions();
+  const [nbjourMois, setNbjourMois] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiGet<{
+          success: boolean;
+          configConge: { nbjourMois?: number } | null;
+        }>('/api/admin/personnel/config-conge');
+        if (cancelled) return;
+        if (res.success && res.configConge?.nbjourMois != null) {
+          setNbjourMois(Number(res.configConge.nbjourMois));
+        } else {
+          setNbjourMois(null);
+        }
+      } catch {
+        if (!cancelled) setNbjourMois(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const menuItems = [
     {
       title: 'Calendrier Fonaredd',
@@ -20,6 +50,10 @@ const CongePage: React.FC = () => {
       href: '/conge/calendrier',
       color: 'bg-blue-500',
       hoverColor: 'hover:bg-blue-600',
+      anyOf: [
+        PERMISSIONS.CALENDAR_MANAGE,
+        PERMISSIONS.MODULE_ADMIN,
+      ],
     },
     {
       title: 'Config Congé',
@@ -28,6 +62,17 @@ const CongePage: React.FC = () => {
       href: '/conge/config-conge',
       color: 'bg-green-500',
       hoverColor: 'hover:bg-green-600',
+      anyOf: [PERMISSIONS.CONGE_CONFIG, PERMISSIONS.MODULE_ADMIN],
+    },
+    {
+      title: 'Congés non justifiés',
+      description:
+        'Retraits sur le solde annuel et historique (impression du rapport)',
+      icon: ExclamationTriangleIcon,
+      href: '/conge/non-justifie',
+      color: 'bg-amber-500',
+      hoverColor: 'hover:bg-amber-600',
+      anyOf: [PERMISSIONS.CONGE_NON_JUSTIFIE, PERMISSIONS.MODULE_ADMIN],
     },
     {
       title: 'Demande Congé',
@@ -36,6 +81,10 @@ const CongePage: React.FC = () => {
       href: '/conge/demandes-conge',
       color: 'bg-purple-500',
       hoverColor: 'hover:bg-purple-600',
+      anyOf: [
+        PERMISSIONS.CONGE_REQUEST,
+        PERMISSIONS.MODULE_ADMIN,
+      ],
     },
     {
       title: 'Traitement Demandes',
@@ -44,6 +93,7 @@ const CongePage: React.FC = () => {
       href: '/conge/traitement-demandes',
       color: 'bg-orange-500',
       hoverColor: 'hover:bg-orange-600',
+      anyOf: [PERMISSIONS.CONGE_TRAITEMENT, PERMISSIONS.MODULE_ADMIN],
     },
     {
       title: 'Types Congés',
@@ -52,6 +102,7 @@ const CongePage: React.FC = () => {
       href: '/conge/types-conges',
       color: 'bg-indigo-500',
       hoverColor: 'hover:bg-indigo-600',
+      anyOf: [PERMISSIONS.CONGE_TYPES, PERMISSIONS.MODULE_ADMIN],
     },
     {
       title: 'Retour Congé',
@@ -60,8 +111,13 @@ const CongePage: React.FC = () => {
       href: '/conge/retour-conge',
       color: 'bg-teal-500',
       hoverColor: 'hover:bg-teal-600',
+      anyOf: [
+        PERMISSIONS.CONGE_RETURN,
+        PERMISSIONS.MODULE_ADMIN,
+      ],
     },
   ];
+  const visibleMenuItems = menuItems.filter((item) => hasAnyPermission(item.anyOf));
 
   return (
     <CongeAppShell>
@@ -111,8 +167,8 @@ const CongePage: React.FC = () => {
 
         {/* Menu Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-          {menuItems.map((item, index) => (
-            <Link key={index} href={item.href}>
+          {visibleMenuItems.map((item) => (
+            <Link key={item.href} href={item.href}>
               <div className="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-200 cursor-pointer group">
                 <div className="p-4 sm:p-6">
                   <div className="flex items-center mb-3 sm:mb-4">
@@ -164,7 +220,9 @@ const CongePage: React.FC = () => {
           <div className="p-6">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="text-center">
-                <div className="text-2xl font-bold text-blue-600">5</div>
+                <div className="text-2xl font-bold text-blue-600">
+                  {visibleMenuItems.length}
+                </div>
                 <div className="text-sm text-gray-500">Modules Actifs</div>
               </div>
               <div className="text-center">
@@ -172,7 +230,9 @@ const CongePage: React.FC = () => {
                 <div className="text-sm text-gray-500">Types de Congés</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold text-purple-600">1.75</div>
+                <div className="text-2xl font-bold text-purple-600">
+                  {formatDecimalFR(nbjourMois)}
+                </div>
                 <div className="text-sm text-gray-500">
                   Jours/Mois Configurés
                 </div>

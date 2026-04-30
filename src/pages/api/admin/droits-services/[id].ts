@@ -1,4 +1,6 @@
+import { requireApiPermissions } from '@/lib/api-auth';
 import { prisma } from '@/lib/prisma';
+import { API_ADMIN } from '@/lib/rbac';
 import { NextApiRequest, NextApiResponse } from 'next';
 
 export default async function handler(
@@ -13,6 +15,11 @@ export default async function handler(
       message: 'ID droit service requis',
     });
   }
+
+  const authUser = await requireApiPermissions(req, res as any, [
+    ...API_ADMIN.droitsServices,
+  ]);
+  if (!authUser) return;
 
   if (req.method === 'PUT') {
     try {

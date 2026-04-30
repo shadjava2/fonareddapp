@@ -1,4 +1,6 @@
+import { requireApiPermissions } from '@/lib/api-auth';
 import { prisma } from '@/lib/prisma';
+import { API_ADMIN } from '@/lib/rbac';
 import { NextApiRequest, NextApiResponse } from 'next';
 
 interface DashboardData {
@@ -25,6 +27,11 @@ export default async function handler(
   res: NextApiResponse<DashboardData>
 ) {
   try {
+    const authUser = await requireApiPermissions(req, res, [
+      ...API_ADMIN.dashboard,
+    ]);
+    if (!authUser) return;
+
     console.log('🔍 API Dashboard - Méthode:', req.method);
 
     if (req.method !== 'GET') {

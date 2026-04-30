@@ -1,5 +1,7 @@
 import { hashPassword } from '@/lib/auth';
+import { requireApiPermissions } from '@/lib/api-auth';
 import { prisma } from '@/lib/prisma';
+import { API_ADMIN } from '@/lib/rbac';
 import { PROVISIONAL_RESET_PASSWORD_PLAIN } from '@/lib/provisional-password';
 import { NextApiRequest, NextApiResponse } from 'next';
 
@@ -24,6 +26,11 @@ export default async function handler(
   }
 
   try {
+    const authUser = await requireApiPermissions(req, res, [
+      ...API_ADMIN.users,
+    ]);
+    if (!authUser) return;
+
     console.log('🔍 API User - Méthode:', req.method, 'ID:', id);
 
     switch (req.method) {

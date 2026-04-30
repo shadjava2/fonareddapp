@@ -15,6 +15,7 @@ interface ProfileModalProps {
     mail: string | null;
     phone: string | null;
     fkRole: number;
+    roleNom?: string | null;
   };
   onClose: () => void;
   onSuccess: () => void;
@@ -268,7 +269,8 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
                   {user.username}
                 </div>
                 <div>
-                  <span className="font-medium">Rôle :</span> ID {user.fkRole}
+                  <span className="font-medium">Rôle :</span>{' '}
+                  {user.roleNom?.trim() || 'Sans rôle assigné'}
                 </div>
               </div>
             </div>

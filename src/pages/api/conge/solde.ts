@@ -50,9 +50,10 @@ export default async function handler(
       }
 
       const soldeId = Number(solde.id);
+      // Règle métier: `congesolde.solde` représente déjà le solde restant disponible.
       const soldeTotal = solde.solde || 0;
       const soldeConsomme = solde.soldeConsomme || 0;
-      const soldeRestant = soldeTotal - soldeConsomme;
+      const soldeRestant = soldeTotal;
 
       console.log('✅ Solde trouvé:', {
         id: soldeId,
@@ -66,9 +67,9 @@ export default async function handler(
         success: true,
         solde: {
           id: soldeId, // ID du congesolde pour fkSoldes
-          solde: soldeTotal, // Solde total depuis congesolde.solde
+          solde: soldeTotal, // Solde restant disponible depuis congesolde.solde
           soldeConsomme: soldeConsomme, // Solde consommé depuis congesolde.soldeConsomme
-          soldeRestant: soldeRestant > 0 ? soldeRestant : 0, // Calculé (solde - soldeConsomme)
+          soldeRestant: soldeRestant > 0 ? soldeRestant : 0,
         },
       });
     }
@@ -101,8 +102,7 @@ export default async function handler(
           fkUtilisateur: updatedSolde.fkUtilisateur?.toString(),
           solde: updatedSolde.solde || 0,
           soldeConsomme: updatedSolde.soldeConsomme || 0,
-          soldeRestant:
-            (updatedSolde.solde || 0) - (updatedSolde.soldeConsomme || 0),
+          soldeRestant: updatedSolde.solde || 0,
         },
       });
     }
@@ -150,8 +150,7 @@ export default async function handler(
             fkUtilisateur: updatedSolde.fkUtilisateur?.toString(),
             solde: updatedSolde.solde || 0,
             soldeConsomme: updatedSolde.soldeConsomme || 0,
-            soldeRestant:
-              (updatedSolde.solde || 0) - (updatedSolde.soldeConsomme || 0),
+          soldeRestant: updatedSolde.solde || 0,
           },
         });
       }
@@ -174,7 +173,7 @@ export default async function handler(
           fkUtilisateur: newSolde.fkUtilisateur?.toString(),
           solde: newSolde.solde || 0,
           soldeConsomme: newSolde.soldeConsomme || 0,
-          soldeRestant: (newSolde.solde || 0) - (newSolde.soldeConsomme || 0),
+          soldeRestant: newSolde.solde || 0,
         },
       });
     }

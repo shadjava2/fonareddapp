@@ -1,10 +1,17 @@
+import { requireApiPermissions } from '@/lib/api-auth';
 import { prisma } from '@/lib/prisma';
+import { API_ADMIN } from '@/lib/rbac';
 import { NextApiRequest, NextApiResponse } from 'next';
 
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
+  const authUser = await requireApiPermissions(req, res as any, [
+    ...API_ADMIN.rolesPermissions,
+  ]);
+  if (!authUser) return;
+
   if (req.method === 'GET') {
     try {
       console.log('🔍 API Roles Permissions - Méthode: GET');
@@ -104,10 +111,32 @@ export default async function handler(
         error: error instanceof Error ? error.message : 'Erreur inconnue',
       });
     }
-  } else if (req.method === 'POST') {
+  } else   if (req.method === 'POST') {
     try {
       console.log('🔍 API Roles Permissions - Méthode: POST');
       console.log('🔍 Données reçues:', req.body);
+
+      if (req.body?.action === 'bulk-delete') {
+        const rawIds = req.body.ids;
+        if (!Array.isArray(rawIds) || rawIds.length === 0) {
+          return res.status(400).json({
+            success: false,
+            message: 'Fournissez une liste non vide d’identifiants à supprimer',
+          });
+        }
+        const bigintIds = rawIds.map((id: unknown) => BigInt(String(id)));
+        const result = await prisma.roles_permissions.deleteMany({
+          where: { id: { in: bigintIds } },
+        });
+        return res.status(200).json({
+          success: true,
+          deleted: result.count,
+          message:
+            result.count === 0
+              ? 'Aucun enregistrement supprimé (identifiants introuvables ?)'
+              : `${result.count} liaison(s) rôle-permission supprimée(s)`,
+        });
+      }
 
       const { fkRole, fkPermission } = req.body;
 

@@ -1,12 +1,10 @@
 import RetourCongeForm from '@/components/forms/RetourCongeForm';
 import CongeAppShell from '@/components/layout/CongeAppShell';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
-import Table from '@/components/ui/Table';
-import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/useToast';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/fetcher';
 import { ArrowUturnLeftIcon, PlusIcon } from '@heroicons/react/24/outline';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 interface RetourConge {
   id: number;
@@ -32,7 +30,6 @@ interface DemandeConge {
 
 const RetourCongePage: React.FC = () => {
   const { showSuccess, showError } = useToast();
-  const { user } = useAuth();
   const [retourConges, setRetourConges] = useState<RetourConge[]>([]);
   const [demandes, setDemandes] = useState<Map<number, DemandeConge>>(
     new Map()
@@ -46,6 +43,9 @@ const RetourCongePage: React.FC = () => {
   );
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
@@ -248,6 +248,15 @@ const RetourCongePage: React.FC = () => {
     }
   };
 
+  const toggleSelect = useCallback((id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
   // Filtrer les retours selon le terme de recherche
   const filteredRetourConges = retourConges.filter((retour) => {
     if (!searchTerm) return true;
@@ -265,106 +274,218 @@ const RetourCongePage: React.FC = () => {
     );
   });
 
-  // Préparer les colonnes de la table
-  const columns = [
-    {
-      header: 'ID',
-      accessor: 'id',
-      render: (retour: RetourConge) => (
-        <span className="font-medium">#{retour.id}</span>
-      ),
+  const toggleSelectAllFiltered = useCallback(
+    (checked: boolean) => {
+      if (!checked) {
+        setSelectedIds(new Set());
+        return;
+      }
+      setSelectedIds(new Set(filteredRetourConges.map((r) => r.id)));
     },
-    {
-      header: 'Demande',
-      accessor: 'fkDemande',
-      render: (retour: RetourConge) => {
-        const demande = retour.fkDemande
-          ? demandes.get(retour.fkDemande)
-          : undefined;
-        if (!demande) {
-          return (
-            <span className="text-gray-400">Demande #{retour.fkDemande}</span>
-          );
-        }
+    [filteredRetourConges]
+  );
 
-        const demandeurStr = demande.demandeur || 'Non spécifié';
-        const demandeurNom = demandeurStr.includes('|')
-          ? demandeurStr.split('|')[1]?.trim() || demandeurStr
-          : demandeurStr;
+  const handleBulkDelete = async () => {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    try {
+      setIsBulkDeleting(true);
+      const response = await apiPost<{ success: boolean; message?: string }>(
+        '/api/conge/retour-conge',
+        { action: 'bulk-delete', ids }
+      );
+      if (response.success) {
+        showSuccess('Succès', response.message || `${ids.length} retour(s) supprimé(s)`);
+        setShowBulkDeleteDialog(false);
+        setSelectedIds(new Set());
+        fetchRetourConges();
+      } else {
+        showError('Erreur', response.message || 'Suppression multiple impossible');
+      }
+    } catch (error: any) {
+      showError(
+        'Erreur',
+        error?.response?.data?.message ||
+          error?.message ||
+          'Une erreur est survenue lors de la suppression multiple'
+      );
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
 
-        return (
-          <div className="text-sm">
-            <div className="font-medium text-gray-900">{demandeurNom}</div>
-            <div className="text-gray-500 text-xs">
-              {demande.du && demande.au
-                ? `${new Date(demande.du).toLocaleDateString('fr-FR')} - ${new Date(demande.au).toLocaleDateString('fr-FR')}`
-                : ''}
-            </div>
-          </div>
-        );
-      },
-    },
-    {
-      header: 'Jours retournés',
-      accessor: 'nbrjour',
-      render: (retour: RetourConge) =>
-        retour.nbrjour !== undefined && retour.nbrjour !== null ? (
-          <span className="font-medium text-green-600">
-            {retour.nbrjour} jour(s)
-          </span>
-        ) : (
-          <span className="text-gray-400">-</span>
-        ),
-    },
-    {
-      header: 'Observations',
-      accessor: 'observations',
-      render: (retour: RetourConge) =>
-        retour.observations ? (
-          <div className="max-w-xs truncate" title={retour.observations}>
-            {retour.observations}
-          </div>
-        ) : (
-          <span className="text-gray-400">-</span>
-        ),
-    },
-    {
-      header: 'Date de création',
-      accessor: 'datecreate',
-      render: (retour: RetourConge) =>
-        retour.datecreate
-          ? new Date(retour.datecreate).toLocaleDateString('fr-FR', {
-              day: '2-digit',
-              month: '2-digit',
-              year: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
-            })
-          : '-',
-    },
-    {
-      header: 'Actions',
-      accessor: 'actions',
-      render: (retour: RetourConge) => (
-        <div className="flex items-center gap-2">
+  const allFilteredSelected = useMemo(() => {
+    if (filteredRetourConges.length === 0) return false;
+    return filteredRetourConges.every((r) => selectedIds.has(r.id));
+  }, [filteredRetourConges, selectedIds]);
+
+  const someFilteredSelected = useMemo(
+    () => filteredRetourConges.some((r) => selectedIds.has(r.id)) && !allFilteredSelected,
+    [filteredRetourConges, selectedIds, allFilteredSelected]
+  );
+  const emptyStateMessage = searchTerm
+    ? 'Aucun retour de congé trouvé pour votre recherche'
+    : 'Aucun retour de congé enregistré';
+  const hasNoResults = filteredRetourConges.length === 0;
+  let tableContent: React.ReactNode;
+  if (loading) {
+    tableContent = (
+      <div className="p-8 text-center">
+        <svg
+          className="animate-spin h-8 w-8 text-indigo-600 mx-auto"
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+        >
+          <circle
+            className="opacity-25"
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            strokeWidth="4"
+          ></circle>
+          <path
+            className="opacity-75"
+            fill="currentColor"
+            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+          ></path>
+        </svg>
+        <p className="mt-2 text-sm text-gray-500">Chargement...</p>
+      </div>
+    );
+  } else if (hasNoResults) {
+    tableContent = (
+      <div className="p-8 text-center">
+        <ArrowUturnLeftIcon className="h-12 w-12 text-gray-400 mx-auto" />
+        <p className="mt-2 text-sm text-gray-500">{emptyStateMessage}</p>
+      </div>
+    );
+  } else {
+    tableContent = (
+      <div className="overflow-x-auto">
+        <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+          <p className="text-sm text-gray-600">
+            {selectedIds.size > 0
+              ? `${selectedIds.size} élément(s) sélectionné(s)`
+              : 'Sélection multiple disponible'}
+          </p>
           <button
-            onClick={() => handleEdit(retour)}
-            className="text-indigo-600 hover:text-indigo-900 text-sm font-medium"
-            title="Modifier"
+            type="button"
+            disabled={selectedIds.size === 0}
+            onClick={() => setShowBulkDeleteDialog(true)}
+            className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Modifier
-          </button>
-          <button
-            onClick={() => handleDelete(retour)}
-            className="text-red-600 hover:text-red-900 text-sm font-medium"
-            title="Supprimer"
-          >
-            Supprimer
+            Supprimer la sélection
           </button>
         </div>
-      ),
-    },
-  ];
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="w-10 px-4 py-3 text-left">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  checked={allFilteredSelected}
+                  ref={(el) => {
+                    if (el) el.indeterminate = someFilteredSelected;
+                  }}
+                  onChange={(e) => toggleSelectAllFiltered(e.target.checked)}
+                  aria-label="Sélectionner tout"
+                />
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">ID</th>
+              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Demande</th>
+              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Jours retournés</th>
+              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Observations</th>
+              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Date de création</th>
+              <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200 bg-white">
+            {filteredRetourConges.map((retour) => {
+              const demande = retour.fkDemande ? demandes.get(retour.fkDemande) : undefined;
+              const demandeurStr = demande?.demandeur || 'Non spécifié';
+              const demandeurNom = demandeurStr.includes('|')
+                ? demandeurStr.split('|')[1]?.trim() || demandeurStr
+                : demandeurStr;
+              return (
+                <tr key={retour.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-4">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                      checked={selectedIds.has(retour.id)}
+                      onChange={() => toggleSelect(retour.id)}
+                      aria-label={`Sélectionner ${retour.id}`}
+                    />
+                  </td>
+                  <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-gray-900">#{retour.id}</td>
+                  <td className="px-6 py-4 text-sm">
+                    {demande ? (
+                      <div>
+                        <div className="font-medium text-gray-900">{demandeurNom}</div>
+                        <div className="text-xs text-gray-500">
+                          {demande.du && demande.au
+                            ? `${new Date(demande.du).toLocaleDateString('fr-FR')} - ${new Date(demande.au).toLocaleDateString('fr-FR')}`
+                            : ''}
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-gray-400">Demande #{retour.fkDemande}</span>
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap px-6 py-4 text-sm">
+                    {retour.nbrjour == null ? (
+                      <span className="text-gray-400">-</span>
+                    ) : (
+                      <span className="font-medium text-green-600">{retour.nbrjour} jour(s)</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-900">
+                    {retour.observations ? (
+                      <div className="max-w-xs truncate" title={retour.observations}>
+                        {retour.observations}
+                      </div>
+                    ) : (
+                      <span className="text-gray-400">-</span>
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                    {retour.datecreate
+                      ? new Date(retour.datecreate).toLocaleDateString('fr-FR', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
+                      : '-'}
+                  </td>
+                  <td className="whitespace-nowrap px-6 py-4 text-right text-sm font-medium">
+                    <button
+                      onClick={() => handleEdit(retour)}
+                      className="text-indigo-600 hover:text-indigo-900"
+                      title="Modifier"
+                    >
+                      Modifier
+                    </button>
+                    <button
+                      onClick={() => handleDelete(retour)}
+                      className="ml-3 text-red-600 hover:text-red-900"
+                      title="Supprimer"
+                    >
+                      Supprimer
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
 
   return (
     <CongeAppShell>
@@ -416,46 +537,7 @@ const RetourCongePage: React.FC = () => {
 
         {/* Table */}
         <div className="bg-white shadow rounded-lg">
-          {loading ? (
-            <div className="p-8 text-center">
-              <svg
-                className="animate-spin h-8 w-8 text-indigo-600 mx-auto"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                ></circle>
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
-              </svg>
-              <p className="mt-2 text-sm text-gray-500">Chargement...</p>
-            </div>
-          ) : filteredRetourConges.length === 0 ? (
-            <div className="p-8 text-center">
-              <ArrowUturnLeftIcon className="h-12 w-12 text-gray-400 mx-auto" />
-              <p className="mt-2 text-sm text-gray-500">
-                {searchTerm
-                  ? 'Aucun retour de congé trouvé pour votre recherche'
-                  : 'Aucun retour de congé enregistré'}
-              </p>
-            </div>
-          ) : (
-            <Table
-              data={filteredRetourConges}
-              columns={columns}
-              keyField="id"
-            />
-          )}
+          {tableContent}
         </div>
 
         {/* Modal de formulaire */}
@@ -518,10 +600,22 @@ const RetourCongePage: React.FC = () => {
           onConfirm={confirmDelete}
           title="Supprimer le retour de congé"
           message={`Êtes-vous sûr de vouloir supprimer le retour de congé #${retourToDelete?.id} ? Cette action est irréversible.`}
-          confirmLabel="Supprimer"
-          cancelLabel="Annuler"
-          variant="danger"
+          confirmText="Supprimer"
+          cancelText="Annuler"
+          type="danger"
           loading={isDeleting}
+        />
+
+        <ConfirmDialog
+          isOpen={showBulkDeleteDialog}
+          onClose={() => setShowBulkDeleteDialog(false)}
+          onConfirm={handleBulkDelete}
+          title="Suppression multiple"
+          message={`Supprimer définitivement ${selectedIds.size} retour(s) de congé ? Cette action est irréversible.`}
+          confirmText={`Supprimer ${selectedIds.size}`}
+          cancelText="Annuler"
+          type="danger"
+          loading={isBulkDeleting}
         />
       </div>
     </CongeAppShell>

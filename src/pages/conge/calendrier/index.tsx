@@ -1,8 +1,10 @@
+import CalendrierMonthGrid from '@/components/conge/CalendrierMonthGrid';
 import CalendrierForm from '@/components/forms/CalendrierForm';
 import CongeAppShell from '@/components/layout/CongeAppShell';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { useToast } from '@/hooks/useToast';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/fetcher';
+import { addMonths, startOfMonth, subMonths } from 'date-fns';
 import { CalendarDaysIcon, PlusIcon } from '@heroicons/react/24/outline';
 import React, { useEffect, useState } from 'react';
 
@@ -31,6 +33,7 @@ const CalendrierPage: React.FC = () => {
   );
   const [isDeleting, setIsDeleting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [viewMonth, setViewMonth] = useState(() => startOfMonth(new Date()));
 
   useEffect(() => {
     fetchCalendrier();
@@ -225,6 +228,16 @@ const CalendrierPage: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* Vue calendrier mensuelle */}
+        <CalendrierMonthGrid
+          viewMonth={viewMonth}
+          onPrevMonth={() => setViewMonth((d) => subMonths(d, 1))}
+          onNextMonth={() => setViewMonth((d) => addMonths(d, 1))}
+          onToday={() => setViewMonth(startOfMonth(new Date()))}
+          entries={calendrier}
+          loading={loading}
+        />
 
         {/* Search */}
         <div className="bg-white shadow rounded-lg">

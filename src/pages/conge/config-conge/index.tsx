@@ -8,6 +8,7 @@ import React, { useEffect, useState } from 'react';
 interface ConfigConge {
   id: number;
   nbjourMois: number;
+  congenonjustifie?: number | null;
   datecreate: string;
   dateupdate: string;
   usercreateid?: number;
@@ -176,6 +177,17 @@ const ConfigCongePage: React.FC = () => {
                       </span>
                     </div>
                     <div className="flex justify-between">
+                      <span className="text-sm text-gray-600">
+                        J. non justifiés / an (plafond):
+                      </span>
+                      <span className="text-sm font-medium text-gray-900">
+                        {configConge.congenonjustifie != null &&
+                        !Number.isNaN(Number(configConge.congenonjustifie))
+                          ? `${configConge.congenonjustifie} j.`
+                          : '—'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
                       <span className="text-sm text-gray-600">Créé le:</span>
                       <span className="text-sm font-medium text-gray-900">
                         {new Date(configConge.datecreate).toLocaleDateString(
@@ -284,7 +296,12 @@ const ConfigCongePage: React.FC = () => {
             <ConfigCongeForm
               onSubmit={handleFormSubmit}
               initialData={
-                configConge ? { nbjourMois: configConge.nbjourMois } : undefined
+                configConge
+                  ? {
+                      nbjourMois: configConge.nbjourMois,
+                      congenonjustifie: configConge.congenonjustifie ?? null,
+                    }
+                  : undefined
               }
               submitLabel={configConge ? 'Modifier' : 'Créer'}
               cancelLabel="Annuler"

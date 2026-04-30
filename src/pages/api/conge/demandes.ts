@@ -1,5 +1,6 @@
 import { getTokenFromRequest, getUserFromToken } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { hasAnyPermission, PERMISSIONS } from '@/lib/rbac';
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 function formatRow(row: any) {
@@ -84,20 +85,81 @@ export default async function handler(
 
   try {
     if (req.method === 'GET') {
+      const token = getTokenFromRequest(req);
+      const currentUser = token ? await getUserFromToken(token) : null;
+      if (!currentUser) {
+        return res.status(401).json({
+          success: false,
+          message: 'Non authentifié',
+        });
+      }
+
       const page = Math.max(1, parseInt(String(req.query.page || '1'), 10));
       const limit = Math.max(1, parseInt(String(req.query.limit || '25'), 10));
       const skip = (page - 1) * limit;
       const search = String(req.query.search || '').trim();
+      const askAll = String(req.query.all || 'false') === 'true';
+      const assignedOnly = String(req.query.assigned || 'false') === 'true';
+      const canViewAllDemandes = hasAnyPermission(currentUser, [
+        PERMISSIONS.CONGE_DEMANDES_ALL,
+        PERMISSIONS.CONGE_TRAITEMENT,
+        PERMISSIONS.MODULE_ADMIN,
+      ]);
 
-      const where: any = search
-        ? {
-            OR: [
-              { section: { contains: search } },
-              { demandeur: { contains: search } },
-              { nomsremplacant: { contains: search } },
-            ],
+      const where: any = {};
+
+      if (search) {
+        where.OR = [
+          { section: { contains: search } },
+          { demandeur: { contains: search } },
+          { nomsremplacant: { contains: search } },
+        ];
+      }
+
+      // Vue "assignée": demandes liées aux traitements affectés à l'utilisateur connecté.
+      if (assignedOnly) {
+        const traitementModel = (prisma as any).congetraitements;
+        if (traitementModel) {
+          const assignedTraitements = await traitementModel.findMany({
+            where: {
+              userupdateid: BigInt(currentUser.id),
+              fkDemande: { not: null },
+            },
+            select: { fkDemande: true },
+          });
+          const demandeIds = Array.from(
+            new Set(
+              assignedTraitements
+                .map((t: any) =>
+                  t.fkDemande != null ? Number(t.fkDemande) : null
+                )
+                .filter((id: number | null): id is number => id !== null)
+            )
+          );
+          if (!demandeIds.length) {
+            return res.status(200).json({
+              success: true,
+              demandes: [],
+              data: [],
+              pagination: {
+                page,
+                limit,
+                total: 0,
+                totalPages: 0,
+                hasNext: false,
+                hasPrev: false,
+              },
+            });
           }
-        : {};
+          where.id = { in: demandeIds.map(BigInt) };
+        } else {
+          where.usercreateid = BigInt(currentUser.id);
+        }
+      } else if (!(askAll && canViewAllDemandes)) {
+        // Par défaut : uniquement les demandes créées par l'utilisateur connecté.
+        // all=true n'est pris en compte que pour les profils autorisés.
+        where.usercreateid = BigInt(currentUser.id);
+      }
 
       const [rows, total] = await Promise.all([
         model.findMany({
@@ -109,8 +171,9 @@ export default async function handler(
         model.count({ where }),
       ]);
 
-      // Récupérer idSuperviseur depuis congetraitements (phase 3) pour chaque demande
+      // Récupérer idSuperviseur + nom superviseur depuis congetraitements (phase 3) pour chaque demande
       const traitementModel = prisma?.congetraitements;
+      const usersModel = prisma?.utilisateurs;
       const data = await Promise.all(
         rows.map(async (row) => {
           const formatted = formatRow(row);
@@ -126,7 +189,25 @@ export default async function handler(
               });
 
               if (traitementPhase3?.userupdateid) {
-                formatted.idSuperviseur = Number(traitementPhase3.userupdateid);
+                const idSuperviseur = Number(traitementPhase3.userupdateid);
+                formatted.idSuperviseur = idSuperviseur;
+                if (usersModel) {
+                  const superviseur = await usersModel.findUnique({
+                    where: { id: BigInt(idSuperviseur) },
+                    select: {
+                      nom: true,
+                      prenom: true,
+                      postnom: true,
+                      username: true,
+                    },
+                  });
+                  if (superviseur) {
+                    formatted.superviseurNom =
+                      `${superviseur.nom || ''} ${superviseur.postnom || ''} ${superviseur.prenom || ''}`.trim() ||
+                      superviseur.username ||
+                      null;
+                  }
+                }
               }
             } catch (error) {
               console.error(
@@ -322,34 +403,12 @@ export default async function handler(
               // Vérifier que le solde appartient bien au demandeur
               const soldeUserId = Number(solde.fkUtilisateur);
               if (soldeUserId === demandeurId) {
-                const soldeTotal = Number(solde.solde) || 0;
-
-                // Calculer le solde réellement consommé : somme des jours des demandes APPROUVEE uniquement
-                // fkSoldes dans congedemande est un String, donc on compare avec String(fkSoldes)
-                const fkSoldesStr = String(fkSoldes);
-                const demandesApprouvees = await model.findMany({
-                  where: {
-                    usercreateid: BigInt(demandeurId),
-                    statut: 'APPROUVEE',
-                    fkSoldes: fkSoldesStr, // Utiliser le même fkSoldes (String)
-                  },
-                  select: {
-                    nbrjour: true,
-                  },
-                });
-
-                const totalConsommeApprouve = demandesApprouvees.reduce(
-                  (sum, d) => sum + (Number(d.nbrjour) || 0),
-                  0
-                );
-
-                // Le solde disponible = solde total (congesolde.solde) - demandes approuvées seulement
-                // On utilise congesolde.solde comme base, pas soldeConsomme
-                const soldeDisponible = soldeTotal - totalConsommeApprouve;
+                // Règle métier: `congesolde.solde` stocke déjà le solde restant disponible.
+                const soldeDisponible = Number(solde.solde) || 0;
                 const nbrjourNum = parseFloat(nbrjour);
 
                 console.log(
-                  `📊 Validation solde pour utilisateur ${demandeurId}: soldeTotal=${soldeTotal}, totalConsommeApprouve=${totalConsommeApprouve}, soldeDisponible=${soldeDisponible}, nbrjour=${nbrjourNum}`
+                  `📊 Validation solde pour utilisateur ${demandeurId}: soldeDisponible=${soldeDisponible}, soldeConsomme=${Number(solde.soldeConsomme) || 0}, nbrjour=${nbrjourNum}`
                 );
 
                 if (nbrjourNum > soldeDisponible) {
@@ -358,7 +417,7 @@ export default async function handler(
                   );
                   return res.status(400).json({
                     success: false,
-                    message: `Impossible de créer la demande : le nombre de jours demandés (${nbrjourNum}) est supérieur au solde disponible (${soldeDisponible} jour${soldeDisponible > 1 ? 's' : ''}). Solde total: ${soldeTotal} jours, déjà consommé (approuvé): ${totalConsommeApprouve} jours.`,
+                    message: `Impossible de créer la demande : le nombre de jours demandés (${nbrjourNum}) est supérieur au solde disponible (${soldeDisponible} jour${soldeDisponible > 1 ? 's' : ''}).`,
                   });
                 }
               } else {

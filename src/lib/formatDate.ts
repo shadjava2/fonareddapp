@@ -64,3 +64,15 @@ export function formatTimeFR(value: Date | string | null | undefined, withSecond
     ...(withSeconds && { second: '2-digit' }),
   });
 }
+
+/** Affichage FR pour paramètres numériques (ex. jours/mois congés). */
+export function formatDecimalFR(
+  value: number | null | undefined,
+  maxFractionDigits = 2
+): string {
+  if (value == null || Number.isNaN(Number(value))) return '—';
+  return Number(value).toLocaleString('fr-FR', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: maxFractionDigits,
+  });
+}

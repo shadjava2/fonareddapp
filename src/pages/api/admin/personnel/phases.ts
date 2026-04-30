@@ -1,4 +1,6 @@
+import { requireApiPermissions } from '@/lib/api-auth';
 import { prisma } from '@/lib/prisma';
+import { API_ADMIN } from '@/lib/rbac';
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 function formatRow(row: any) {
@@ -20,6 +22,11 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
+  const authUser = await requireApiPermissions(req, res as any, [
+    ...API_ADMIN.personnel,
+  ]);
+  if (!authUser) return;
+
   if (!prisma) {
     return res.status(500).json({
       success: false,

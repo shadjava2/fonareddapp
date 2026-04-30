@@ -7,10 +7,36 @@ import {
   DocumentTextIcon,
   UserGroupIcon,
 } from '@heroicons/react/24/outline';
+import { formatDecimalFR } from '@/lib/formatDate';
+import { apiGet } from '@/lib/fetcher';
 import Link from 'next/link';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 const PersonnelPage: React.FC = () => {
+  const [nbjourMois, setNbjourMois] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiGet<{
+          success: boolean;
+          configConge: { nbjourMois?: number } | null;
+        }>('/api/admin/personnel/config-conge');
+        if (cancelled) return;
+        if (res.success && res.configConge?.nbjourMois != null) {
+          setNbjourMois(Number(res.configConge.nbjourMois));
+        } else {
+          setNbjourMois(null);
+        }
+      } catch {
+        if (!cancelled) setNbjourMois(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const menuItems = [
     {
       title: 'Calendrier Fonaredd',
@@ -163,7 +189,9 @@ const PersonnelPage: React.FC = () => {
                 <div className="text-sm text-gray-500">Types de Congés</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold text-purple-600">1.75</div>
+                <div className="text-2xl font-bold text-purple-600">
+                  {formatDecimalFR(nbjourMois)}
+                </div>
                 <div className="text-sm text-gray-500">
                   Jours/Mois Configurés
                 </div>

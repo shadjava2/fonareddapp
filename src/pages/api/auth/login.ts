@@ -18,6 +18,7 @@ interface LoginResponse {
     mail: string | null;
     phone: string | null;
     fkRole: number;
+    roleNom: string | null;
     initPassword: number;
     permissions: string[];
     services: number[];
@@ -90,9 +91,10 @@ export default async function handler(
         mail: userProfile.mail,
         phone: userProfile.phone,
         fkRole: parseInt(userProfile.fkRole || '0'),
+        roleNom: userProfile.roleNom,
         initPassword: userProfile.initPassword ? 1 : 0,
         permissions: userProfile.permissions,
-        services: userProfile.services.map((s) => parseInt(s)),
+        services: userProfile.services,
       },
     });
   } catch (error: any) {

@@ -1,18 +1,25 @@
+import { requireApiPermissions } from '@/lib/api-auth';
 import { prisma } from '@/lib/prisma';
+import { API_ADMIN } from '@/lib/rbac';
 import { NextApiRequest, NextApiResponse } from 'next';
 
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
+  const authUser = await requireApiPermissions(req, res as any, [
+    ...API_ADMIN.droitsServices,
+  ]);
+  if (!authUser) return;
+
   if (req.method === 'GET') {
     try {
       console.log('🔍 API Droits Services - Méthode: GET');
       console.log('🔍 Début de la récupération des droits services...');
 
       // Paramètres de pagination
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 50; // Augmenté à 50
+      const page = Number.parseInt(req.query.page as string, 10) || 1;
+      const limit = Number.parseInt(req.query.limit as string, 10) || 50; // Augmenté à 50
       const skip = (page - 1) * limit;
 
       // Si all=true, charger toutes les données
@@ -97,6 +104,25 @@ export default async function handler(
     }
   } else if (req.method === 'POST') {
     try {
+      if (req.body?.action === 'bulk-delete') {
+        const ids = Array.isArray(req.body?.ids) ? req.body.ids : [];
+        const unique = [...new Set(ids.map((x: any) => BigInt(String(x))))];
+        if (unique.length === 0) {
+          return res.status(400).json({
+            success: false,
+            message: 'Aucun identifiant fourni pour la suppression',
+          });
+        }
+        const result = await prisma.droits_services.deleteMany({
+          where: { id: { in: unique } },
+        });
+        return res.status(200).json({
+          success: true,
+          deleted: result.count,
+          message: `${result.count} liaison(s) supprimee(s)`,
+        });
+      }
+
       console.log('🔍 API Droits Services - Méthode: POST');
       console.log('🔍 Données reçues:', req.body);
 

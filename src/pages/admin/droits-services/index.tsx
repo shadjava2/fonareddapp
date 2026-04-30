@@ -1,9 +1,9 @@
-import DroitsServicesForm from '@/components/forms/DroitsServicesForm';
+import UserServicesEditor from '@/components/admin/UserServicesEditor';
 import AdminLayout from '@/components/layout/AdminLayout';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { useToast } from '@/hooks/useToast';
-import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/fetcher';
-import { useEffect, useState } from 'react';
+import { apiDelete, apiGet, apiPost } from '@/lib/fetcher';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 interface DroitsService {
   id: number | string;
@@ -30,17 +30,17 @@ interface DroitsService {
 interface User {
   id: number;
   nom: string;
-  prenom: string;
+  prenom: string | null;
   username: string;
 }
 
 interface Service {
   id: number;
-  designation: string;
+  designation: string | null;
   site?: {
     id: number;
-    designation: string;
-  };
+    designation: string | null;
+  } | null;
 }
 
 const DroitsServicesPage: React.FC = () => {
@@ -49,29 +49,35 @@ const DroitsServicesPage: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
-  const [dataLoading, setDataLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [editingDroitsService, setEditingDroitsService] =
-    useState<DroitsService | null>(null);
   const [droitsServiceToDelete, setDroitsServiceToDelete] =
     useState<DroitsService | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [stats, setStats] = useState({
     total: 0,
+    usersCount: 0,
+    servicesCount: 0,
   });
 
   useEffect(() => {
-    console.log('🔍 useEffect - Début du chargement des données');
-    fetchDroitsServices();
-    fetchUsers();
-    fetchServices();
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        await Promise.all([fetchDroitsServices(), fetchUsers(), fetchServices()]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const fetchDroitsServices = async () => {
     try {
-      setLoading(true);
-      console.log('🔍 Début du chargement des droits services...');
-
       const response = await apiGet<{
         success: boolean;
         droitsServices: DroitsService[];
@@ -80,136 +86,63 @@ const DroitsServicesPage: React.FC = () => {
         pagination?: any;
       }>('/api/admin/droits-services?all=true');
 
-      console.log('🔍 Réponse API droits-services:', response);
-
       if (response.success && response.droitsServices) {
-        console.log('🔍 Droits services reçus:', response.droitsServices);
         setDroitsServices(response.droitsServices);
-
-        setStats({
-          total: response.droitsServices.length,
-        });
-
-        console.log(
-          '🔍 Droits services définis dans le state:',
-          response.droitsServices.length
-        );
-        console.log('🔍 Statistiques:', {
-          total: response.droitsServices.length,
-        });
+        setStats((s) => ({ ...s, total: response.droitsServices.length }));
       } else {
-        console.error('❌ Erreur dans la réponse API:', response);
         setDroitsServices([]);
-        setStats({ total: 0 });
+        setStats((s) => ({ ...s, total: 0 }));
       }
     } catch (error) {
-      console.error('❌ Erreur lors du chargement des droits services:', error);
+      console.error('Erreur chargement droits services:', error);
       setDroitsServices([]);
-      setStats({ total: 0 });
-    } finally {
-      setLoading(false);
+      setStats((s) => ({ ...s, total: 0 }));
     }
   };
 
   const fetchUsers = async () => {
     try {
-      console.log('🔍 Début du chargement des utilisateurs...');
       const response = await apiGet<{ success: boolean; users: User[] }>(
         '/api/admin/users'
       );
-      console.log('🔍 Réponse API users:', response);
       if (response.success && response.users) {
-        console.log('🔍 Utilisateurs reçus:', response.users);
-        setUsers(response.users);
-        console.log(
-          '🔍 Utilisateurs définis dans le state:',
-          response.users.length
-        );
+        const list = response.users.map((u) => ({
+          ...u,
+          id: Number(u.id),
+        }));
+        setUsers(list);
+        setStats((s) => ({ ...s, usersCount: list.length }));
       } else {
-        console.error('❌ Erreur dans la réponse API users:', response);
         setUsers([]);
+        setStats((s) => ({ ...s, usersCount: 0 }));
       }
     } catch (error) {
-      console.error('❌ Erreur lors du chargement des utilisateurs:', error);
+      console.error('Erreur chargement utilisateurs:', error);
       setUsers([]);
+      setStats((s) => ({ ...s, usersCount: 0 }));
     }
   };
 
   const fetchServices = async () => {
     try {
-      console.log('🔍 Début du chargement des services...');
       const response = await apiGet<{ success: boolean; services: Service[] }>(
         '/api/admin/services'
       );
-      console.log('🔍 Réponse API services:', response);
       if (response.success && response.services) {
-        console.log('🔍 Services reçus:', response.services);
-        setServices(response.services);
-        console.log(
-          '🔍 Services définis dans le state:',
-          response.services.length
-        );
+        const list = response.services.map((s) => ({
+          ...s,
+          id: Number(s.id),
+        }));
+        setServices(list);
+        setStats((s) => ({ ...s, servicesCount: list.length }));
       } else {
-        console.error('❌ Erreur dans la réponse API services:', response);
         setServices([]);
+        setStats((s) => ({ ...s, servicesCount: 0 }));
       }
     } catch (error) {
-      console.error('❌ Erreur lors du chargement des services:', error);
+      console.error('Erreur chargement services:', error);
       setServices([]);
-    } finally {
-      setDataLoading(false);
-    }
-  };
-
-  const handleCreateDroitsService = async (data: any) => {
-    try {
-      const response = await apiPost<{ success: boolean; message?: string }>(
-        '/api/admin/droits-services',
-        data
-      );
-      if (response.success) {
-        showSuccess('Droit service créé avec succès');
-        setShowForm(false);
-        fetchDroitsServices();
-      } else {
-        showError(response.message || 'Erreur lors de la création');
-      }
-    } catch (error: any) {
-      showError(error.message || 'Erreur lors de la création');
-    }
-  };
-
-  const handleOpenForm = () => {
-    console.log('🔍 Ouverture du formulaire - Données actuelles:', {
-      users: users.length,
-      services: services.length,
-    });
-    if (users.length === 0 || services.length === 0) {
-      console.log('🔍 Rechargement des données...');
-      fetchUsers();
-      fetchServices();
-    }
-    setShowForm(true);
-  };
-
-  const handleUpdateDroitsService = async (data: any) => {
-    if (!editingDroitsService) return;
-
-    try {
-      const response = await apiPut<{ success: boolean; message?: string }>(
-        `/api/admin/droits-services/${editingDroitsService.id}`,
-        data
-      );
-      if (response.success) {
-        showSuccess('Droit service modifié avec succès');
-        setShowForm(false);
-        setEditingDroitsService(null);
-        fetchDroitsServices();
-      } else {
-        showError(response.message || 'Erreur lors de la modification');
-      }
-    } catch (error: any) {
-      showError(error.message || 'Erreur lors de la modification');
+      setStats((s) => ({ ...s, servicesCount: 0 }));
     }
   };
 
@@ -224,6 +157,11 @@ const DroitsServicesPage: React.FC = () => {
       if (response.success) {
         showSuccess('Droit service supprimé avec succès');
         setDroitsServiceToDelete(null);
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          next.delete(String(droitsServiceToDelete.id));
+          return next;
+        });
         fetchDroitsServices();
       } else {
         showError(response.message || 'Erreur lors de la suppression');
@@ -235,19 +173,82 @@ const DroitsServicesPage: React.FC = () => {
     }
   };
 
-  const handleEdit = (droitsService: DroitsService) => {
-    setEditingDroitsService(droitsService);
-    setShowForm(true);
-  };
-
   const handleDelete = (droitsService: DroitsService) => {
     setDroitsServiceToDelete(droitsService);
   };
 
-  const handleCancel = () => {
-    setShowForm(false);
-    setEditingDroitsService(null);
+  const toggleSelect = useCallback((id: string | number) => {
+    const key = String(id);
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(
+    (checked: boolean) => {
+      if (!checked) {
+        setSelectedIds(new Set());
+        return;
+      }
+      setSelectedIds(new Set(droitsServices.map((ds) => String(ds.id))));
+    },
+    [droitsServices]
+  );
+
+  const allVisibleSelected = useMemo(() => {
+    if (droitsServices.length === 0) return false;
+    return droitsServices.every((ds) => selectedIds.has(String(ds.id)));
+  }, [droitsServices, selectedIds]);
+
+  const someVisibleSelected = useMemo(
+    () =>
+      droitsServices.some((ds) => selectedIds.has(String(ds.id))) &&
+      !allVisibleSelected,
+    [droitsServices, selectedIds, allVisibleSelected]
+  );
+
+  const handleBulkDelete = async () => {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    try {
+      setIsBulkDeleting(true);
+      const response = await apiPost<{
+        success: boolean;
+        message?: string;
+        deleted?: number;
+      }>('/api/admin/droits-services', {
+        action: 'bulk-delete',
+        ids,
+      });
+      if (response.success) {
+        showSuccess(
+          response.message || `${response.deleted ?? ids.length} element(s) supprime(s)`
+        );
+        setBulkDeleteOpen(false);
+        setSelectedIds(new Set());
+        fetchDroitsServices();
+      } else {
+        showError(response.message || 'Erreur lors de la suppression multiple');
+      }
+    } catch (error: any) {
+      showError(error.message || 'Erreur lors de la suppression multiple');
+    } finally {
+      setIsBulkDeleting(false);
+    }
   };
+
+  const matrixLinks = useMemo(
+    () =>
+      droitsServices.map((ds) => ({
+        fkUtilisateur: ds.fkUtilisateur,
+        fkService: ds.fkService,
+      })),
+    [droitsServices]
+  );
+  const hasCatalog = users.length > 0 && services.length > 0;
 
   return (
     <AdminLayout
@@ -257,7 +258,7 @@ const DroitsServicesPage: React.FC = () => {
       <div className="space-y-6">
         {/* En-tête avec statistiques */}
         <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex items-center">
               <div className="h-8 w-8 text-blue-600 mr-3 flex items-center justify-center">
                 <span className="text-2xl">🔑</span>
@@ -267,43 +268,37 @@ const DroitsServicesPage: React.FC = () => {
                   Droits Services
                 </h1>
                 <p className="text-sm text-gray-600">
-                  Gestion des droits d'accès aux services
+                  Choisissez un utilisateur a droite, cochez ses services a gauche, puis enregistrez.
                 </p>
               </div>
             </div>
-            <button
-              onClick={handleOpenForm}
-              className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-200 shadow-sm"
-            >
-              <span className="mr-2">+</span>
-              Ajouter un droit service
-            </button>
           </div>
 
-          {/* Statistiques */}
           {!loading && (
-            <div className="mt-6 grid grid-cols-1 md:grid-cols-1 gap-4">
-              <div className="bg-blue-50 p-4 rounded-lg">
-                <div className="flex items-center">
-                  <div className="p-2 bg-blue-100 rounded-lg">
-                    <span className="text-2xl">🔑</span>
-                  </div>
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-blue-600">
-                      Total Droits Services
-                    </p>
-                    <p className="text-2xl font-bold text-blue-900">
-                      {stats.total}
-                    </p>
-                  </div>
-                </div>
+            <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div className="rounded-lg bg-blue-50 p-4">
+                <p className="text-sm font-medium text-blue-600">Utilisateurs</p>
+                <p className="text-2xl font-bold text-blue-900">
+                  {stats.usersCount}
+                </p>
+              </div>
+              <div className="rounded-lg bg-cyan-50 p-4">
+                <p className="text-sm font-medium text-cyan-600">Services</p>
+                <p className="text-2xl font-bold text-cyan-900">
+                  {stats.servicesCount}
+                </p>
+              </div>
+              <div className="rounded-lg bg-indigo-50 p-4">
+                <p className="text-sm font-medium text-indigo-600">
+                  Liaisons en base
+                </p>
+                <p className="text-2xl font-bold text-indigo-900">{stats.total}</p>
               </div>
             </div>
           )}
         </div>
 
-        {/* Contenu principal */}
-        {loading ? (
+        {loading && (
           <div className="p-6 text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
             <p className="mt-2 text-sm text-gray-500">
@@ -316,162 +311,146 @@ const DroitsServicesPage: React.FC = () => {
               Recharger
             </button>
           </div>
-        ) : droitsServices.length === 0 ? (
-          <div className="p-6 text-center">
-            <div className="mx-auto h-12 w-12 text-gray-400 flex items-center justify-center">
-              <span className="text-2xl">🔑</span>
-            </div>
-            <h3 className="mt-2 text-sm font-medium text-gray-900">
-              Aucun droit service trouvé
-            </h3>
-            <p className="mt-1 text-sm text-gray-500">
-              Commencez par créer votre premier droit service.
-            </p>
-            <button
-              onClick={fetchDroitsServices}
-              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-            >
-              Recharger les droits services
-            </button>
-          </div>
-        ) : (
-          <div className="bg-white shadow rounded-lg overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      ID
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Utilisateur
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Service
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Site
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Date de création
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {droitsServices.map((droitsService) => (
-                    <tr key={droitsService.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
-                          #{droitsService.id}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
-                          {droitsService.utilisateur?.nom}{' '}
-                          {droitsService.utilisateur?.prenom}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          @{droitsService.utilisateur?.username}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
-                          {droitsService.service?.designation}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
-                          {droitsService.service?.site?.designation || (
-                            <span className="text-gray-400">N/A</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
-                          {new Date(
-                            droitsService.datecreate
-                          ).toLocaleDateString('fr-FR')}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {new Date(
-                            droitsService.datecreate
-                          ).toLocaleTimeString('fr-FR')}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <div className="flex justify-end space-x-2">
-                          <button
-                            onClick={() => handleEdit(droitsService)}
-                            className="text-indigo-600 hover:text-indigo-900"
-                          >
-                            Modifier
-                          </button>
-                          <button
-                            onClick={() => handleDelete(droitsService)}
-                            className="text-red-600 hover:text-red-900"
-                          >
-                            Supprimer
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        )}
+
+        {!loading && !hasCatalog && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-center text-sm text-amber-900">
+            Donnees insuffisantes (utilisateurs ou services). Verifiez les droits
+            d'acces API ou rechargez la page.
+            <div>
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="mt-3 block w-full rounded-md bg-amber-800 px-4 py-2 text-white hover:bg-amber-900 sm:mx-auto sm:w-auto"
+              >
+                Recharger
+              </button>
             </div>
           </div>
         )}
 
-        {/* Formulaire de droits services */}
-        {showForm && (
-          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-            <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-              <div className="mt-3">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">
-                  {editingDroitsService
-                    ? 'Modifier le droit service'
-                    : 'Nouveau droit service'}
-                </h3>
-                {dataLoading ? (
-                  <div className="p-6 text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
-                    <p className="mt-2 text-sm text-gray-500">
-                      Chargement des données...
-                    </p>
-                  </div>
-                ) : (
-                  <DroitsServicesForm
-                    onSubmit={
-                      editingDroitsService
-                        ? handleUpdateDroitsService
-                        : handleCreateDroitsService
-                    }
-                    initialData={
-                      editingDroitsService
-                        ? {
-                            fkUtilisateur: editingDroitsService.fkUtilisateur
-                              ? Number(editingDroitsService.fkUtilisateur)
-                              : null,
-                            fkService: editingDroitsService.fkService
-                              ? Number(editingDroitsService.fkService)
-                              : null,
-                          }
-                        : undefined
-                    }
-                    users={users}
-                    services={services}
-                    onCancel={handleCancel}
-                  />
-                )}
+        {!loading && hasCatalog && (
+          <div className="space-y-6">
+            <UserServicesEditor
+              users={users}
+              services={services}
+              links={matrixLinks}
+              onSaved={fetchDroitsServices}
+            />
+
+            <details className="group rounded-lg border border-gray-200 bg-white shadow-sm">
+              <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-gray-700 marker:hidden [&::-webkit-details-marker]:hidden">
+                <span className="flex items-center justify-between gap-2">
+                  <span>
+                    Vue liste avancee (suppression ligne a ligne ou par lot)
+                  </span>
+                  <span className="text-xs font-normal text-gray-500 group-open:hidden">
+                    Afficher
+                  </span>
+                  <span className="hidden text-xs font-normal text-gray-500 group-open:inline">
+                    Masquer
+                  </span>
+                </span>
+              </summary>
+              <div className="border-t border-gray-100">
+                <div className="flex flex-col gap-3 border-b border-gray-200 bg-gray-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-gray-600">
+                    {selectedIds.size > 0 ? (
+                      <span>
+                        <span className="font-medium text-gray-900">
+                          {selectedIds.size}
+                        </span>{' '}
+                        element(s) selectionne(s)
+                      </span>
+                    ) : (
+                      'Selection multiple pour suppression en masse.'
+                    )}
+                  </p>
+                  <button
+                    type="button"
+                    disabled={selectedIds.size === 0}
+                    onClick={() => setBulkDeleteOpen(true)}
+                    className="inline-flex justify-center rounded-md border border-transparent bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Supprimer la selection
+                  </button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th scope="col" className="w-12 px-4 py-3 text-left">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            checked={allVisibleSelected}
+                            ref={(el) => {
+                              if (el) el.indeterminate = someVisibleSelected;
+                            }}
+                            onChange={(e) => toggleSelectAll(e.target.checked)}
+                            aria-label="Tout selectionner sur cette page"
+                          />
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                          ID
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                          Utilisateur
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                          Service
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                          Site
+                        </th>
+                        <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 bg-white">
+                      {droitsServices.map((ds) => (
+                        <tr key={ds.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-4 align-middle">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              checked={selectedIds.has(String(ds.id))}
+                              onChange={() => toggleSelect(ds.id)}
+                              aria-label={`Selectionner #${ds.id}`}
+                            />
+                          </td>
+                          <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-gray-900">
+                            #{ds.id}
+                          </td>
+                          <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                            {ds.utilisateur?.nom} {ds.utilisateur?.prenom || ''}
+                          </td>
+                          <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                            {ds.service?.designation || '-'}
+                          </td>
+                          <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-600">
+                            {ds.service?.site?.designation || '-'}
+                          </td>
+                          <td className="whitespace-nowrap px-6 py-4 text-right text-sm font-medium">
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(ds)}
+                              className="text-red-600 hover:text-red-900"
+                            >
+                              Supprimer
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
+            </details>
           </div>
         )}
 
-        {/* Dialog de confirmation de suppression */}
         <ConfirmDialog
           isOpen={!!droitsServiceToDelete}
           onClose={() => setDroitsServiceToDelete(null)}
@@ -482,6 +461,18 @@ const DroitsServicesPage: React.FC = () => {
           confirmText="Supprimer"
           cancelText="Annuler"
           loading={isDeleting}
+        />
+
+        <ConfirmDialog
+          isOpen={bulkDeleteOpen}
+          onClose={() => setBulkDeleteOpen(false)}
+          onConfirm={handleBulkDelete}
+          title="Suppression multiple"
+          message={`Supprimer definitivement ${selectedIds.size} liaison(s) utilisateur-service ? Cette action est irreversible.`}
+          type="danger"
+          confirmText={`Supprimer ${selectedIds.size} element(s)`}
+          cancelText="Annuler"
+          loading={isBulkDeleting}
         />
       </div>
     </AdminLayout>
