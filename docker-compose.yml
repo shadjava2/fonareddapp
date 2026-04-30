@@ -45,6 +45,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        DATABASE_URL: ${DATABASE_URL}
     container_name: fonaredd-app-prod
     restart: unless-stopped
     ports:
