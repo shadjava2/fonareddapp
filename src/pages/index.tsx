@@ -284,28 +284,17 @@ const IndexPage: React.FC = () => {
 
   return (
     <div className="relative min-h-screen flex items-center justify-center px-4 sm:px-6 lg:px-8 overflow-hidden">
-      {/* Fond forêt : flou LQIP immédiat puis WebP (~300 Ko) */}
+      {/* Fond forêt en CSS (JPEG servi depuis /public — robuste en Docker standalone) */}
       <div
         aria-hidden
         className="absolute inset-0 -z-10 bg-[#0f2918]"
         style={{
-          backgroundImage: "url('/login-forest-blur.jpg')",
+          backgroundImage:
+            "linear-gradient(to bottom, rgba(0,0,0,.55), rgba(6,46,28,.42), rgba(0,0,0,.72)), url('/login-forest.jpg')",
           backgroundSize: 'cover',
           backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
         }}
-      />
-      <Image
-        src="/login-forest.webp"
-        alt=""
-        fill
-        priority
-        sizes="100vw"
-        className="object-cover -z-10"
-        quality={70}
-      />
-      <div
-        aria-hidden
-        className="absolute inset-0 -z-10 bg-gradient-to-b from-black/55 via-emerald-950/50 to-black/70"
       />
 
       <div className="max-w-md w-full space-y-6 relative z-10">
