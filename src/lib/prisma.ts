@@ -77,17 +77,25 @@ function createPrismaClient(): PrismaClient | undefined {
 
   /**
    * Pool volontairement petit.
-   * Timeouts : courts pour MySQL local / Docker ; plus longs si l’hôte est distant
-   * (ex. Tailscale) — sinon acquireTimeout 8s tombe avant la 1re connexion (~10s).
+   * host.docker.internal = MySQL sur l’hôte depuis Docker : souvent >3–8 s au 1er handshake
+   * (auth caching_sha2 / DNS) — ne pas le traiter comme « local instantané ».
    */
+  const isDockerHostBridge = parsed.host === 'host.docker.internal';
   const isRemoteHost =
     parsed.host !== '127.0.0.1' &&
     parsed.host !== 'localhost' &&
-    parsed.host !== 'host.docker.internal' &&
-    parsed.host !== 'mysql';
-  const connectionLimit = envInt('DB_CONNECTION_LIMIT', isRemoteHost ? 8 : 5);
-  const connectTimeout = envInt('DB_CONNECT_TIMEOUT_MS', isRemoteHost ? 15_000 : 3_000);
-  const acquireTimeout = envInt('DB_ACQUIRE_TIMEOUT_MS', isRemoteHost ? 60_000 : 8_000);
+    parsed.host !== 'mysql' &&
+    !isDockerHostBridge;
+  const useLongTimeouts = isRemoteHost || isDockerHostBridge;
+  const connectionLimit = envInt('DB_CONNECTION_LIMIT', useLongTimeouts ? 8 : 5);
+  const connectTimeout = envInt(
+    'DB_CONNECT_TIMEOUT_MS',
+    useLongTimeouts ? 15_000 : 3_000
+  );
+  const acquireTimeout = envInt(
+    'DB_ACQUIRE_TIMEOUT_MS',
+    useLongTimeouts ? 60_000 : 8_000
+  );
   /** idleTimeout du driver mariadb est en secondes */
   const idleTimeoutSec = envInt('DB_IDLE_TIMEOUT_SEC', 60);
 
@@ -101,8 +109,7 @@ function createPrismaClient(): PrismaClient | undefined {
     connectTimeout,
     acquireTimeout,
     idleTimeout: idleTimeoutSec,
-    // Distant : garder 1 connexion chaude évite de re-payer 10 s à chaque requête
-    minimumIdle: isRemoteHost ? 1 : 0,
+    minimumIdle: useLongTimeouts ? 1 : 0,
     allowPublicKeyRetrieval: parsed.allowPublicKeyRetrieval,
     ...(parsed.ssl === false ? { ssl: false } : {}),
   });
