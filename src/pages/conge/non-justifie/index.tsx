@@ -26,6 +26,8 @@ type Retrait = {
   nbrjours: number;
   commentaire: string | null;
   resteApres: number | null;
+  dateDebut?: string | null;
+  dateFin?: string | null;
   datecreate: string;
   utilisateur?: {
     nom: string;
@@ -55,10 +57,13 @@ const NonJustifiePage: React.FC = () => {
   const [sendingEmail, setSendingEmail] = useState(false);
   const [fkUtilisateur, setFkUtilisateur] = useState('');
   const [nbrjours, setNbrjours] = useState('');
+  const [dateDebut, setDateDebut] = useState('');
+  const [dateFin, setDateFin] = useState('');
   const [commentaire, setCommentaire] = useState('');
   const [fieldErrors, setFieldErrors] = useState<{
     agent?: string;
     jours?: string;
+    periode?: string;
   }>({});
 
   const fetchAgentOptions = useCallback(async (query: string) => {
@@ -194,6 +199,11 @@ const NonJustifiePage: React.FC = () => {
     if (!Number.isFinite(j) || j <= 0) {
       nextErrors.jours = 'Indiquez un nombre de jours valide (> 0).';
     }
+    if (!dateDebut || !dateFin) {
+      nextErrors.periode = 'Indiquez la période (du / au).';
+    } else if (dateDebut > dateFin) {
+      nextErrors.periode = 'La date de début ne peut pas être après la fin.';
+    }
 
     setFieldErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) {
@@ -206,6 +216,8 @@ const NonJustifiePage: React.FC = () => {
       const body: Record<string, unknown> = {
         fkUtilisateur,
         nbrjours: j,
+        dateDebut,
+        dateFin,
         commentaire: commentaire.trim() || undefined,
       };
       if (user?.id != null) {
@@ -221,6 +233,8 @@ const NonJustifiePage: React.FC = () => {
       if (res.success) {
         showSuccess('Enregistré', 'Retrait enregistré et solde mis à jour.');
         setNbrjours('');
+        setDateDebut('');
+        setDateFin('');
         setCommentaire('');
         setFieldErrors({});
         if (fkUtilisateur) {
@@ -472,6 +486,56 @@ const NonJustifiePage: React.FC = () => {
                   />
                 </div>
 
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <label
+                      htmlFor="nj-debut"
+                      className="block text-[0.9375rem] sm:text-sm font-semibold text-gray-800 mb-2"
+                    >
+                      Du <span className="text-red-500">*</span>
+                    </label>
+                    <Input
+                      id="nj-debut"
+                      type="date"
+                      value={dateDebut}
+                      onChange={(e) => {
+                        setDateDebut(e.target.value);
+                        setFieldErrors((prev) => ({
+                          ...prev,
+                          periode: undefined,
+                        }));
+                      }}
+                      required
+                      className="min-h-[48px] py-3.5 text-base sm:text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label
+                      htmlFor="nj-fin"
+                      className="block text-[0.9375rem] sm:text-sm font-semibold text-gray-800 mb-2"
+                    >
+                      Au <span className="text-red-500">*</span>
+                    </label>
+                    <Input
+                      id="nj-fin"
+                      type="date"
+                      value={dateFin}
+                      onChange={(e) => {
+                        setDateFin(e.target.value);
+                        setFieldErrors((prev) => ({
+                          ...prev,
+                          periode: undefined,
+                        }));
+                      }}
+                      required
+                      className="min-h-[48px] py-3.5 text-base sm:text-sm"
+                    />
+                  </div>
+                </div>
+                {fieldErrors.periode && (
+                  <p className="text-sm text-red-600">{fieldErrors.periode}</p>
+                )}
+
                 <div>
                   <label
                     htmlFor="nj-commentaire"
@@ -602,6 +666,11 @@ const NonJustifiePage: React.FC = () => {
                           <p className="text-[0.9375rem] font-medium text-gray-900">
                             {formatDateTimeShortFR(r.datecreate)}
                           </p>
+                          {(r.dateDebut || r.dateFin) && (
+                            <p className="mt-1 text-sm text-indigo-700">
+                              Période : {r.dateDebut || '—'} → {r.dateFin || '—'}
+                            </p>
+                          )}
                         </div>
                         <div className="shrink-0 text-right space-y-1">
                           <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -643,6 +712,9 @@ const NonJustifiePage: React.FC = () => {
                   <th className="px-4 lg:px-6 py-3.5 text-left font-medium text-gray-700">
                     Date
                   </th>
+                  <th className="px-4 lg:px-6 py-3.5 text-left font-medium text-gray-700">
+                    Période
+                  </th>
                   <th className="px-4 lg:px-6 py-3.5 text-right font-medium text-gray-700">
                     Jours
                   </th>
@@ -658,7 +730,7 @@ const NonJustifiePage: React.FC = () => {
                 {!fkUtilisateur ? (
                   <tr>
                     <td
-                      colSpan={4}
+                      colSpan={5}
                       className="px-6 py-10 text-center text-gray-500"
                     >
                       Sélectionnez un agent pour afficher l’historique.
@@ -667,7 +739,7 @@ const NonJustifiePage: React.FC = () => {
                 ) : historyLoading ? (
                   <tr>
                     <td
-                      colSpan={4}
+                      colSpan={5}
                       className="px-6 py-10 text-center text-gray-500"
                     >
                       Chargement…
@@ -676,7 +748,7 @@ const NonJustifiePage: React.FC = () => {
                 ) : retraits.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={4}
+                      colSpan={5}
                       className="px-6 py-10 text-center text-gray-500"
                     >
                       Aucun retrait enregistré pour cet agent.
@@ -687,6 +759,11 @@ const NonJustifiePage: React.FC = () => {
                     <tr key={r.id}>
                       <td className="px-4 lg:px-6 py-3.5 whitespace-nowrap text-gray-900">
                         {formatDateTimeShortFR(r.datecreate)}
+                      </td>
+                      <td className="px-4 lg:px-6 py-3.5 whitespace-nowrap text-gray-700">
+                        {r.dateDebut || r.dateFin
+                          ? `${r.dateDebut || '—'} → ${r.dateFin || '—'}`
+                          : '—'}
                       </td>
                       <td className="px-4 lg:px-6 py-3.5 text-right tabular-nums">
                         {formatDecimalFR(r.nbrjours)}

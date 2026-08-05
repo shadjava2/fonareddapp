@@ -1,18 +1,9 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import { prisma } from '@/lib/prisma';
 import type { NonJustifiePdfRow } from '@/lib/reports/NonJustifiePdfDocument';
+import { formatPersonDisplayName } from '@/lib/user-display-name';
 import type { ReactElement } from 'react';
 
-/**
- * Logo officiel d’en-tête : `public/logo.png` à la racine du projet Next (data URI pour @react-pdf).
- */
-export function getFonareddLogoSrcForPdf(): string | undefined {
-  const png = path.join(process.cwd(), 'public', 'logo.png');
-  if (!fs.existsSync(png)) return undefined;
-  const buf = fs.readFileSync(png);
-  return `data:image/png;base64,${buf.toString('base64')}`;
-}
+export { getFonareddLogoSrcForPdf } from '@/lib/reports/fonaredd-pdf-logo';
 
 export type NonJustifieReportPayload = {
   agentLine: string;
@@ -56,8 +47,7 @@ export async function loadNonJustifieReportForAgent(
   ]);
 
   const agentLine =
-    [agent.prenom, agent.nom].filter((p) => p && String(p).trim()).join(' ').trim() ||
-    agent.username;
+    formatPersonDisplayName(agent) || agent.username;
 
   const plafond = config?.congenonjustifie;
   const plafondStr =

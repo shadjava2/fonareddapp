@@ -1,10 +1,11 @@
 import LogoutConfirmDialog from '@/components/auth/LogoutConfirmDialog';
 import {
   ArrowRightOnRectangleIcon,
-  BuildingOffice2Icon,
   ChartBarIcon,
   ClockIcon,
   Cog6ToothIcon,
+  CloudArrowUpIcon,
+  ExclamationTriangleIcon,
   HomeIcon,
   UserGroupIcon,
   WifiIcon,
@@ -39,16 +40,18 @@ const PersonnelSidebar: React.FC = () => {
       current: router.pathname === '/personnel/reports',
     },
     {
+      name: 'Performance mensuelle',
+      href: '/personnel/reports/monthly-performance',
+      icon: ChartBarIcon,
+      current: router.pathname.startsWith(
+        '/personnel/reports/monthly-performance'
+      ),
+    },
+    {
       name: 'Agents enregistrés sur le lecteur',
       href: '/personnel/users',
       icon: UserGroupIcon,
       current: router.pathname === '/personnel/users',
-    },
-    {
-      name: 'Gestion des services',
-      href: '/personnel/departments',
-      icon: BuildingOffice2Icon,
-      current: router.pathname === '/personnel/departments',
     },
     {
       name: 'Monitoring',
@@ -57,10 +60,22 @@ const PersonnelSidebar: React.FC = () => {
       current: router.pathname === '/personnel/monitoring',
     },
     {
+      name: 'Monitoring de présence',
+      href: '/personnel/presence-monitoring',
+      icon: ExclamationTriangleIcon,
+      current: router.pathname === '/personnel/presence-monitoring',
+    },
+    {
       name: 'Configuration',
       href: '/personnel/config',
       icon: Cog6ToothIcon,
       current: router.pathname === '/personnel/config',
+    },
+    {
+      name: 'Import iVMS / CSV',
+      href: '/personnel/hikvision-ingest',
+      icon: CloudArrowUpIcon,
+      current: router.pathname === '/personnel/hikvision-ingest',
     },
     {
       name: 'Diagnostic',
@@ -104,6 +119,14 @@ const PersonnelSidebar: React.FC = () => {
             <Link
               key={item.name}
               href={item.href}
+              onClick={(e) => {
+                // Évite l’erreur Next.js :
+                // "Invariant: attempted to hard navigate to the same URL"
+                const current = router.asPath.split('?')[0];
+                if (current === item.href || router.pathname === item.href) {
+                  e.preventDefault();
+                }
+              }}
               className={`group flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors duration-200 ${
                 item.current
                   ? 'bg-blue-100 text-blue-700 border-r-2 border-blue-700'

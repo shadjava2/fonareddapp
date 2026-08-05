@@ -1,4 +1,5 @@
 import { debounce } from '@/lib/utils';
+import { formatPersonDisplayName } from '@/lib/user-display-name';
 import { useCallback, useState } from 'react';
 
 interface AutocompleteOption {
@@ -102,7 +103,10 @@ export function useUserAutocomplete(options: Partial<UseAutocompleteOptions> = {
     transformResponse: (users: any[]) =>
       users.map(user => ({
         value: user.id,
-        label: `${user.nom || ''} ${user.prenom || ''}`.trim() || user.username,
+        label:
+          formatPersonDisplayName(user) ||
+          user.username ||
+          String(user.id),
       })),
     ...options,
   });

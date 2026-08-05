@@ -22,9 +22,12 @@ export interface RecentEvent {
   id: string;
   device_ip: string;
   event_type: string;
+  event_type_effective?: string;
   employee_no: string;
   event_time: string;
   direction?: string;
+  direction_effective?: string | null;
+  presence_label?: string;
 }
 
 interface MonitoringViewProps {
@@ -258,7 +261,14 @@ const MonitoringView: React.FC<MonitoringViewProps> = (props) => {
               </div>
             ) : (
               <div className="space-y-3">
-                {recentEvents.map((event) => (
+                {recentEvents.map((event) => {
+                  const typeUi =
+                    event.event_type_effective ?? event.event_type;
+                  const dirUi =
+                    event.direction_effective ?? event.direction;
+                  const presence =
+                    event.presence_label ?? dirUi ?? event.direction;
+                  return (
                   <div
                     key={event.id}
                     className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition duration-200"
@@ -273,29 +283,30 @@ const MonitoringView: React.FC<MonitoringViewProps> = (props) => {
                       </div>
                       <div className="ml-4">
                         <p className="text-sm font-medium text-gray-900">
-                          {getEventTypeLabel(event.event_type)}
+                          {getEventTypeLabel(typeUi)}
                         </p>
                         <p className="text-sm text-gray-500">
                           Employé: {event.employee_no || 'N/A'}
-                          {event.direction && ` • Direction: ${event.direction}`}
+                          {presence ? ` • ${presence}` : ''}
                         </p>
                       </div>
                     </div>
                     <div className="text-right">
                       <p
-                        className={`text-sm font-medium ${getEventTypeColor(event.event_type)}`}
+                        className={`text-sm font-medium ${getEventTypeColor(typeUi)}`}
                       >
                         {formatEventTime(event.event_time)}
                       </p>
-                      <div className="flex items-center">
+                      <div className="flex items-center justify-end">
                         <span className="text-lg mr-2">
-                          {getDirectionIcon(event.direction)}
+                          {getDirectionIcon(dirUi ?? undefined)}
                         </span>
                         <span className="text-xs text-gray-500">{event.device_ip}</span>
                       </div>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

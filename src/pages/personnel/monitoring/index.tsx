@@ -1,5 +1,5 @@
 import { useToast } from '@/hooks/useToast';
-import { formatDateTimeFR, formatDateTimeShortFR, formatTimeFR } from '@/lib/formatDate';
+import { formatTimeFR } from '@/lib/formatDate';
 import { apiGet } from '@/lib/fetcher';
 import { useCallback, useEffect, useState } from 'react';
 import MonitoringView, {
@@ -49,8 +49,18 @@ const MonitoringPage: React.FC = () => {
       const res = await fetch('/api/hikvision/ingest');
       const data = await res.json();
       if (data.ok) {
+        const ins = data.inserted ?? 0;
+        const skip = data.skipped ?? 0;
+        const recv = data.fetched ?? 0;
+        const rep =
+          typeof data.repairedFromRaw === 'number' && data.repairedFromRaw > 0
+            ? ` ${data.repairedFromRaw} ligne(s) corrigée(s) depuis le JSON lecteur.`
+            : '';
+        const retry = data.widenedRetry
+          ? ' Seconde tentative sur 30 jours (fenêtre incrémentale vide).'
+          : '';
         showSuccess(
-          `${data.inserted ?? 0} événement(s) synchronisé(s) le ${formatDateTimeShortFR(new Date())}. Actualisation...`
+          `${ins} nouveau(x), ${skip} ignoré(s), ${recv} reçu(s) du lecteur.${retry}${rep} Actualisation…`
         );
         await fetchMonitoringData();
       } else {

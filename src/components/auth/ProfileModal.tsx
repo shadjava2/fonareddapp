@@ -3,18 +3,18 @@ import Dialog from '@/components/ui/Dialog';
 import Input from '@/components/ui/Input';
 import { apiPost } from '@/lib/fetcher';
 import { EyeIcon, EyeSlashIcon, UserIcon } from '@heroicons/react/24/outline';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 interface ProfileModalProps {
   isOpen: boolean;
   user: {
-    id: number;
+    id: number | string;
     nom: string | null;
     prenom: string | null;
     username: string;
     mail: string | null;
     phone: string | null;
-    fkRole: number;
+    fkRole: number | string;
     roleNom?: string | null;
   };
   onClose: () => void;
@@ -55,6 +55,23 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
     password?: { [key: string]: string };
     general?: string;
   }>({});
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setProfileData({
+      nom: user.nom || '',
+      prenom: user.prenom || '',
+      mail: user.mail || '',
+      phone: user.phone || '',
+    });
+    setPasswordData({
+      currentPassword: '',
+      newPassword: '',
+      confirmPassword: '',
+    });
+    setActiveTab('profile');
+    setErrors({});
+  }, [isOpen, user]);
 
   const validateProfile = () => {
     const newErrors: { [key: string]: string } = {};
@@ -221,21 +238,21 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
           <form onSubmit={handleProfileSubmit} className="space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Input
-                label="Nom"
-                value={profileData.nom}
-                onChange={(e) =>
-                  setProfileData({ ...profileData, nom: e.target.value })
-                }
-                error={errors.profile?.nom}
-                required
-              />
-              <Input
                 label="Prénom"
                 value={profileData.prenom}
                 onChange={(e) =>
                   setProfileData({ ...profileData, prenom: e.target.value })
                 }
                 error={errors.profile?.prenom}
+                required
+              />
+              <Input
+                label="Nom"
+                value={profileData.nom}
+                onChange={(e) =>
+                  setProfileData({ ...profileData, nom: e.target.value })
+                }
+                error={errors.profile?.nom}
                 required
               />
             </div>

@@ -117,7 +117,10 @@ const IndexPage: React.FC = () => {
       console.error('Erreur de connexion:', error);
       let errorMessage = 'Erreur de connexion. Veuillez réessayer.';
 
-      if (error.response?.status === 401) {
+      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+        errorMessage =
+          'Délai dépassé : la base distante met trop longtemps à répondre. Réessayez.';
+      } else if (error.response?.status === 401) {
         errorMessage = "Nom d'utilisateur ou mot de passe incorrect";
       } else if (error.response?.status === 429) {
         errorMessage = 'Trop de tentatives de connexion. Veuillez patienter.';

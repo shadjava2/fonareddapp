@@ -3,6 +3,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import ModernSelect from '@/components/ui/ModernSelect';
 import { apiGet } from '@/lib/fetcher';
+import { formatPersonDisplayName } from '@/lib/user-display-name';
 import React, { useEffect, useRef, useState } from 'react';
 
 // Styles pour le placeholder du contentEditable
@@ -173,7 +174,7 @@ const DemandeCongeForm: React.FC<DemandeCongeFormProps> = ({
                 value: userId,
                 label:
                   u.label ||
-                  `${u.nom || ''} ${u.prenom || ''}`.trim() ||
+                  `${formatPersonDisplayName(u) || u.username}`.trim() ||
                   u.username ||
                   '',
               };

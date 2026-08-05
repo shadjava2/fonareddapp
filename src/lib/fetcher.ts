@@ -4,7 +4,9 @@ import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 // Utiliser une baseURL relative pour que l'app marche en localhost ET via IP/LAN
 const fetcher: AxiosInstance = axios.create({
   baseURL: '/',
-  timeout: 10000,
+  // MySQL distant (Tailscale) : login souvent ~10–20 s ; 10 s faisait échouer le client
+  // alors que le serveur répondait encore 200 juste après.
+  timeout: 60_000,
   withCredentials: true, // Pour les cookies HttpOnly
 });
 
@@ -81,6 +83,15 @@ export async function apiPut<T>(
   config?: AxiosRequestConfig
 ): Promise<T> {
   const response = await fetcher.put(url, data, config);
+  return response.data;
+}
+
+export async function apiPatch<T>(
+  url: string,
+  data?: any,
+  config?: AxiosRequestConfig
+): Promise<T> {
+  const response = await fetcher.patch(url, data, config);
   return response.data;
 }
 

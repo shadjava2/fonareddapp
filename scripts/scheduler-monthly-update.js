@@ -1,35 +1,32 @@
 #!/usr/bin/env node
 
 /**
- * Script scheduler pour mettre à jour les soldes de congé mensuellement
+ * Recalibrage automatique des soldes de congé (début de mois).
  *
  * Utilisation:
  *   node scripts/scheduler-monthly-update.js [secret]
  *
- * Pour cron job (exécuter le dernier jour de chaque mois à 23h59):
- *   59 23 28-31 * * /usr/bin/node /path/to/scripts/scheduler-monthly-update.js
+ * Cron recommandé (1er du mois à 00:05):
+ *   5 0 1 * * /usr/bin/node /path/to/scripts/scheduler-monthly-update.js
  */
 
 const http = require('http');
 const https = require('https');
 
-// Configuration
 const DEFAULT_PORT = process.env.PORT || 3001;
 const DEFAULT_HOST = process.env.HOST || 'localhost';
 const DEFAULT_PROTOCOL = process.env.PROTOCOL || 'http';
 const SCHEDULER_SECRET =
   process.env.SCHEDULER_SECRET || 'default-secret-change-me';
 
-// Récupérer le secret depuis les arguments de ligne de commande ou variable d'environnement
 const secret = process.argv[2] || SCHEDULER_SECRET;
 
 const url = `${DEFAULT_PROTOCOL}://${DEFAULT_HOST}:${DEFAULT_PORT}/api/conge/scheduler/monthly-update`;
 
-console.log('📅 Scheduler de mise à jour mensuelle des soldes de congé');
+console.log('📅 Scheduler recalibrage soldes de congé (début de mois)');
 console.log(`🔗 URL: ${url}`);
 console.log('⏰ Date:', new Date().toISOString());
 
-// Faire la requête POST
 const requestOptions = {
   method: 'POST',
   headers: {
@@ -55,10 +52,11 @@ const req = protocol.request(url, requestOptions, (res) => {
         if (response.details) {
           console.log('📊 Détails:', {
             Mois: `${response.details.month} - ${response.details.monthName}`,
-            'Jours/mois configurés': response.details.nbjourMois,
-            'Jours ajoutés': response.details.joursAjoutes,
+            'Jours/mois': response.details.nbjourMois,
+            'Mois crédités': response.details.monthsCounted,
+            'Total prévu (sans conso)': response.details.totalPrevuSansConso,
             'Utilisateurs traités': response.details.utilisateursTraites,
-            'Soldes remis à zéro': response.details.totalSoldesResets || 0,
+            'Reset année (janvier)': response.details.resetYear || false,
           });
         }
         process.exit(0);
@@ -77,12 +75,17 @@ const req = protocol.request(url, requestOptions, (res) => {
 req.on('error', (error) => {
   console.error('❌ Erreur de connexion:', error.message);
   console.error(
-    `💡 Assurez-vous que le serveur est en cours d'exécution sur ${DEFAULT_PROTOCOL}://${DEFAULT_HOST}:${DEFAULT_PORT}`
+    `💡 Assurez-vous que le serveur tourne sur ${DEFAULT_PROTOCOL}://${DEFAULT_HOST}:${DEFAULT_PORT}`
   );
   process.exit(1);
 });
 
-// Envoyer les données
+req.setTimeout(180_000, () => {
+  console.error('❌ Timeout (180s) — le serveur met trop longtemps à répondre');
+  req.destroy();
+  process.exit(1);
+});
+
 const body = JSON.stringify({ secret });
 req.write(body);
 req.end();

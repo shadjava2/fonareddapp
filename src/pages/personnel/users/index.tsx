@@ -1,10 +1,20 @@
 import PersonnelLayout from '@/components/layout/PersonnelLayout';
+import AutocompleteSelect from '@/components/ui/AutocompleteSelect';
 import Pagination from '@/components/ui/Pagination';
 import SearchBar from '@/components/ui/SearchBar';
 import { useToast } from '@/hooks/useToast';
-import { apiGet, apiPost } from '@/lib/fetcher';
+import { apiGet, apiPatch, apiPost } from '@/lib/fetcher';
 import { ArrowDownTrayIcon, UserGroupIcon } from '@heroicons/react/24/outline';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+
+interface SystemUserLink {
+  id: string;
+  label: string;
+  username: string;
+  fonction: string | null;
+  role: string | null;
+  services: string | null;
+}
 
 interface ACSUser {
   id: string;
@@ -12,6 +22,8 @@ interface ACSUser {
   employee_no: string;
   name?: string;
   department?: string;
+  system_user_id?: string | null;
+  system_user?: SystemUserLink | null;
   raw: any;
 }
 
@@ -19,17 +31,17 @@ interface ACSUser {
 function displayName(user: ACSUser): string {
   const n =
     (user.name && String(user.name).trim()) ||
-    (user.raw?.personName ?? user.raw?.name ?? user.raw?.employeeName ?? user.raw?.Name);
+    (user.raw?.personName ??
+      user.raw?.name ??
+      user.raw?.employeeName ??
+      user.raw?.Name);
   return n != null && String(n).trim() !== '' ? String(n).trim() : 'N/A';
 }
 
 function displayDepartment(user: ACSUser): string | null {
-  const d =
-    user.department ||
-    user.raw?.department ||
-    user.raw?.deptName ||
-    user.raw?.departmentName;
-  return d != null && String(d).trim() !== '' ? String(d).trim() : null;
+  // Source unique : droits services de l’utilisateur système lié
+  if (user.system_user?.services) return user.system_user.services;
+  return null;
 }
 
 const ACSUsersPage: React.FC = () => {
@@ -37,15 +49,36 @@ const ACSUsersPage: React.FC = () => {
   const [users, setUsers] = useState<ACSUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [linkingId, setLinkingId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(25);
   const [searchQuery, setSearchQuery] = useState('');
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
+  const [sysOptions, setSysOptions] = useState<
+    Array<{ value: string; label: string }>
+  >([]);
+  const [sysLoading, setSysLoading] = useState(false);
+
+  /** Charge toute la liste une fois — filtre local instantané (pas d’API à chaque frappe). */
+  const loadSystemUsers = useCallback(async () => {
+    try {
+      setSysLoading(true);
+      const res = await apiGet<{
+        success: boolean;
+        users: Array<{ value: string; label: string }>;
+      }>('/api/hikvision/system-users-autocomplete?limit=500');
+      setSysOptions(res.users || []);
+    } catch {
+      setSysOptions([]);
+    } finally {
+      setSysLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    fetchUsers();
-  }, []);
+    void loadSystemUsers();
+  }, [loadSystemUsers]);
 
   const fetchUsers = async (
     page = currentPage,
@@ -54,12 +87,6 @@ const ACSUsersPage: React.FC = () => {
   ) => {
     try {
       setLoading(true);
-      console.log('🔍 Chargement des utilisateurs ACS...', {
-        page,
-        limit,
-        search,
-      });
-
       const params = new URLSearchParams({
         page: page.toString(),
         limit: limit.toString(),
@@ -78,43 +105,81 @@ const ACSUsersPage: React.FC = () => {
         message: string;
       }>(`/api/hikvision/users?${params.toString()}`);
 
-      console.log('🔍 Réponse API utilisateurs ACS:', response);
-
       if (response.success && response.users) {
         setUsers(response.users);
         setTotalPages(response.pagination.totalPages);
         setTotalItems(response.pagination.total);
-        console.log('✅ Utilisateurs ACS chargés:', response.users.length);
       } else {
-        console.error('❌ Erreur dans la réponse API:', response);
         setUsers([]);
       }
     } catch (error) {
-      console.error(
-        '❌ Erreur lors du chargement des utilisateurs ACS:',
-        error
-      );
+      console.error(error);
       setUsers([]);
     } finally {
       setLoading(false);
     }
   };
 
+  useEffect(() => {
+    void fetchUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
-    fetchUsers(page, itemsPerPage, searchQuery);
+    void fetchUsers(page, itemsPerPage, searchQuery);
   };
 
   const handleItemsPerPageChange = (newItemsPerPage: number) => {
     setItemsPerPage(newItemsPerPage);
     setCurrentPage(1);
-    fetchUsers(1, newItemsPerPage, searchQuery);
+    void fetchUsers(1, newItemsPerPage, searchQuery);
   };
 
   const handleSearch = (query: string) => {
     setSearchQuery(query);
     setCurrentPage(1);
-    fetchUsers(1, itemsPerPage, query);
+    void fetchUsers(1, itemsPerPage, query);
+  };
+
+  const handleLink = async (acsId: string, systemUserId: string | null) => {
+    try {
+      setLinkingId(acsId);
+      const res = await apiPatch<{
+        success: boolean;
+        message?: string;
+        user?: ACSUser;
+        error?: string;
+      }>('/api/hikvision/users', {
+        id: acsId,
+        system_user_id: systemUserId,
+      });
+      if (!res.success || !res.user) {
+        showError(
+          res.message ||
+            res.error ||
+            'Échec de la liaison'
+        );
+        return;
+      }
+      setUsers((prev) =>
+        prev.map((u) => (u.id === acsId ? { ...u, ...res.user! } : u))
+      );
+      showSuccess(res.message || 'Liaison enregistrée');
+    } catch (e: unknown) {
+      const msg =
+        e && typeof e === 'object' && 'response' in e
+          ? String(
+              (e as { response?: { data?: { message?: string } } }).response
+                ?.data?.message || ''
+            )
+          : '';
+      showError(
+        msg || (e instanceof Error ? e.message : 'Erreur liaison')
+      );
+    } finally {
+      setLinkingId(null);
+    }
   };
 
   const handleImportFromDevice = async () => {
@@ -139,7 +204,8 @@ const ACSUsersPage: React.FC = () => {
       }
     } catch (error: any) {
       showError(
-        error?.message || "Impossible d'importer depuis l'appareil. Vérifiez la configuration du lecteur."
+        error?.message ||
+          "Impossible d'importer depuis l'appareil. Vérifiez la configuration du lecteur."
       );
     } finally {
       setSyncing(false);
@@ -148,15 +214,23 @@ const ACSUsersPage: React.FC = () => {
 
   const getDepartmentColor = (department?: string) => {
     if (!department) return 'bg-gray-100 text-gray-800';
+    return 'bg-emerald-50 text-emerald-800';
+  };
 
-    const colors: { [key: string]: string } = {
-      IT: 'bg-blue-100 text-blue-800',
-      HR: 'bg-green-100 text-green-800',
-      Finance: 'bg-purple-100 text-purple-800',
-      Admin: 'bg-orange-100 text-orange-800',
-      Security: 'bg-red-100 text-red-800',
-    };
-    return colors[department] || 'bg-gray-100 text-gray-800';
+  /** Options = liste API + éventuelle sélection courante absente de la liste */
+  const optionsForRow = (user: ACSUser) => {
+    const base = [...sysOptions];
+    if (
+      user.system_user_id &&
+      user.system_user &&
+      !base.some((o) => o.value === user.system_user_id)
+    ) {
+      base.unshift({
+        value: user.system_user_id,
+        label: user.system_user.label,
+      });
+    }
+    return base;
   };
 
   return (
@@ -165,9 +239,8 @@ const ACSUsersPage: React.FC = () => {
       description="Gestion des utilisateurs du système de contrôle d'accès"
     >
       <div className="space-y-6">
-        {/* En-tête */}
         <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center">
               <UserGroupIcon className="h-8 w-8 text-green-600 mr-3" />
               <div>
@@ -175,7 +248,15 @@ const ACSUsersPage: React.FC = () => {
                   Utilisateurs ACS
                 </h1>
                 <p className="text-sm text-gray-600">
-                  Gestion des utilisateurs du système de contrôle d'accès
+                  Liez chaque agent lecteur à un utilisateur système pour les
+                  rapports (nom, fonction, rôle, service). Le service vient des{' '}
+                  <a
+                    href="/admin/droits-services"
+                    className="text-emerald-700 underline hover:no-underline"
+                  >
+                    Droits Services
+                  </a>{' '}
+                  — sans changer le nom sur le lecteur.
                 </p>
               </div>
             </div>
@@ -189,7 +270,7 @@ const ACSUsersPage: React.FC = () => {
                 {syncing ? 'Import en cours…' : "Importer depuis l'appareil"}
               </button>
               <button
-                onClick={() => fetchUsers()}
+                onClick={() => void fetchUsers()}
                 className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition duration-200"
               >
                 Actualiser
@@ -198,28 +279,20 @@ const ACSUsersPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Barre de recherche */}
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-medium text-gray-900">
               Rechercher des utilisateurs
             </h3>
-            <button
-              onClick={() => fetchUsers()}
-              className="text-sm text-green-600 hover:text-green-800"
-            >
-              Actualiser
-            </button>
           </div>
           <SearchBar
             onSearch={handleSearch}
-            placeholder="Rechercher par numéro d'employé ou nom..."
+            placeholder="Rechercher par numéro d'employé ou nom lecteur..."
             loading={loading}
             className="w-full"
           />
         </div>
 
-        {/* Contenu principal */}
         {loading ? (
           <div className="p-6 text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mx-auto"></div>
@@ -234,8 +307,7 @@ const ACSUsersPage: React.FC = () => {
               Aucun utilisateur trouvé
             </h3>
             <p className="mt-2 text-sm text-gray-600 max-w-md mx-auto">
-              Il faut d’abord importer les personnes depuis l’appareil (lecteur
-              d’empreinte). Les utilisateurs apparaîtront ici après l’import.
+              Importez d’abord les personnes depuis l’appareil (lecteur).
             </p>
             <button
               onClick={handleImportFromDevice}
@@ -252,16 +324,22 @@ const ACSUsersPage: React.FC = () => {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Employé
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      ID lecteur
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Nom
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Nom lecteur
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Service
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[220px]">
+                      Utilisateur système
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Fonction
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Service (droits)
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Lecteur
                     </th>
                   </tr>
@@ -269,28 +347,38 @@ const ACSUsersPage: React.FC = () => {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {users.map((user) => (
                     <tr key={user.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="flex-shrink-0">
-                            <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-                              <span className="text-green-600 text-sm font-bold">
-                                {user.employee_no.charAt(0).toUpperCase()}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="ml-4">
-                            <div className="text-sm font-medium text-gray-900">
-                              {user.employee_no}
-                            </div>
-                          </div>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="text-sm font-medium text-gray-900">
+                          {user.employee_no}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-4 py-3 whitespace-nowrap">
                         <div className="text-sm text-gray-900">
                           {displayName(user)}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-4 py-3 min-w-[220px]">
+                        <AutocompleteSelect
+                          options={optionsForRow(user)}
+                          value={user.system_user_id || null}
+                          onChange={(v) =>
+                            void handleLink(
+                              user.id,
+                              v == null || v === '' ? null : String(v)
+                            )
+                          }
+                          placeholder="Lier à un utilisateur…"
+                          disabled={linkingId === user.id}
+                          loading={sysLoading || linkingId === user.id}
+                          className="text-sm"
+                        />
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
+                        {user.system_user?.fonction || (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
                         {(() => {
                           const dept = displayDepartment(user);
                           return dept ? (
@@ -300,14 +388,12 @@ const ACSUsersPage: React.FC = () => {
                               {dept}
                             </span>
                           ) : (
-                            <span className="text-sm text-gray-500">N/A</span>
+                            <span className="text-sm text-gray-400">—</span>
                           );
                         })()}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
-                          {user.device_ip}
-                        </div>
+                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                        {user.device_ip}
                       </td>
                     </tr>
                   ))}
@@ -317,7 +403,6 @@ const ACSUsersPage: React.FC = () => {
           </div>
         )}
 
-        {/* Pagination */}
         {!loading && users.length > 0 && (
           <Pagination
             currentPage={currentPage}

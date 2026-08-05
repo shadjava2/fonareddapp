@@ -78,9 +78,9 @@ export default async function handler(
       roleId: userProfile.fkRole || '0',
     });
 
-    await recordSuccessfulLogin(req, userProfile);
-
-    return res.status(200).json({
+    // Répondre d’abord : l’historique / e-mail ne doivent pas bloquer le login
+    // (surtout avec MySQL distant où chaque requête peut coûter plusieurs secondes).
+    res.status(200).json({
       success: true,
       token,
       user: {
@@ -97,6 +97,9 @@ export default async function handler(
         services: userProfile.services,
       },
     });
+
+    void recordSuccessfulLogin(req, userProfile);
+    return;
   } catch (error: any) {
     console.error('Erreur lors de la connexion:', error);
 

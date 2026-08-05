@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { formatPersonDisplayName } from '@/lib/user-display-name';
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 type RetraitRow = {
@@ -7,6 +8,8 @@ type RetraitRow = {
   nbrjours: number;
   commentaire: string | null;
   resteApres: number | null;
+  dateDebut: string | null;
+  dateFin: string | null;
   datecreate: string;
   usercreateid: string | null;
   utilisateur?: {
@@ -16,12 +19,19 @@ type RetraitRow = {
   };
 };
 
+function toDateOnly(d: Date | null | undefined): string | null {
+  if (!d) return null;
+  return d.toISOString().slice(0, 10);
+}
+
 function mapRetrait(r: {
   id: bigint;
   fkUtilisateur: bigint;
   nbrjours: number;
   commentaire: string | null;
   resteApres: number | null;
+  dateDebut?: Date | null;
+  dateFin?: Date | null;
   datecreate: Date;
   usercreateid: bigint | null;
   utilisateur?: {
@@ -36,6 +46,8 @@ function mapRetrait(r: {
     nbrjours: r.nbrjours,
     commentaire: r.commentaire,
     resteApres: r.resteApres,
+    dateDebut: toDateOnly(r.dateDebut ?? null),
+    dateFin: toDateOnly(r.dateFin ?? null),
     datecreate: r.datecreate.toISOString(),
     usercreateid: r.usercreateid?.toString() ?? null,
     utilisateur: r.utilisateur,
@@ -109,8 +121,7 @@ export default async function handler(
         });
 
         const users = rows.map((u) => {
-          const parts = [u.prenom, u.nom].filter((p) => p && String(p).trim());
-          const display = parts.join(' ').trim() || u.username;
+          const display = formatPersonDisplayName(u) || u.username;
           return {
             id: u.id.toString(),
             label: `${display} (${u.username})`,
@@ -181,7 +192,14 @@ export default async function handler(
     }
 
     if (req.method === 'POST') {
-      const { fkUtilisateur, nbrjours, commentaire, usercreateid } = req.body || {};
+      const {
+        fkUtilisateur,
+        nbrjours,
+        commentaire,
+        usercreateid,
+        dateDebut,
+        dateFin,
+      } = req.body || {};
 
       if (!fkUtilisateur) {
         return res.status(400).json({
@@ -195,6 +213,24 @@ export default async function handler(
         return res.status(400).json({
           success: false,
           message: 'nbrjours doit être un nombre strictement positif',
+        });
+      }
+
+      const debutStr = String(dateDebut || '').trim().slice(0, 10);
+      const finStr = String(dateFin || '').trim().slice(0, 10);
+      if (
+        !/^\d{4}-\d{2}-\d{2}$/.test(debutStr) ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(finStr)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: 'dateDebut et dateFin (AAAA-MM-JJ) sont requis',
+        });
+      }
+      if (debutStr > finStr) {
+        return res.status(400).json({
+          success: false,
+          message: 'dateDebut ne peut pas être après dateFin',
         });
       }
 
@@ -272,6 +308,8 @@ export default async function handler(
                 ? commentaire.trim().slice(0, 500)
                 : null,
             resteApres,
+            dateDebut: new Date(`${debutStr}T00:00:00.000Z`),
+            dateFin: new Date(`${finStr}T00:00:00.000Z`),
             usercreateid: creator,
           },
           include: {

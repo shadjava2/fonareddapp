@@ -3,6 +3,7 @@ import AdminLayout from '@/components/layout/AdminLayout';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { useToast } from '@/hooks/useToast';
 import { apiGet, apiPost, apiPut } from '@/lib/fetcher';
+import { formatPersonDisplayName } from '@/lib/user-display-name';
 import {
   BanknotesIcon,
   PencilIcon,
@@ -307,7 +308,8 @@ const CongeSoldePage: React.FC = () => {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-medium text-gray-900">
                           {solde.utilisateur
-                            ? `${solde.utilisateur.nom} ${solde.utilisateur.prenom}`
+                            ? formatPersonDisplayName(solde.utilisateur) ||
+                              solde.utilisateur.username
                             : 'N/A'}
                         </div>
                         {solde.utilisateur && (
@@ -399,7 +401,7 @@ const CongeSoldePage: React.FC = () => {
           onClose={() => setSoldeToDelete(null)}
           onConfirm={handleDelete}
           title="Supprimer le solde"
-          message={`Êtes-vous sûr de vouloir supprimer le solde de "${soldeToDelete?.utilisateur?.nom} ${soldeToDelete?.utilisateur?.prenom}" ? Cette action est irréversible.`}
+          message={`Êtes-vous sûr de vouloir supprimer le solde de "${soldeToDelete?.utilisateur ? formatPersonDisplayName(soldeToDelete.utilisateur) || soldeToDelete.utilisateur.username : ''}" ? Cette action est irréversible.`}
           type="danger"
           confirmText="Supprimer"
           cancelText="Annuler"

@@ -5,6 +5,7 @@ import { useAuth, usePermissions } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/useToast';
 import { apiGet, apiPost, apiPut } from '@/lib/fetcher';
 import { PERMISSIONS } from '@/lib/rbac';
+import { formatPersonDisplayName } from '@/lib/user-display-name';
 import {
   DocumentTextIcon,
   PlusIcon,
@@ -564,7 +565,7 @@ const DemandeCongePage: React.FC = () => {
                       const user = t.userupdate || {};
                       const fullName =
                         user.fullName ||
-                        `${user.nom || ''} ${user.prenom || ''}`.trim() ||
+                        formatPersonDisplayName(user) ||
                         user.username ||
                         'N/A';
                       const fonction = user.fonction || 'N/A';

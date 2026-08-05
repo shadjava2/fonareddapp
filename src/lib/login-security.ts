@@ -1,6 +1,7 @@
 import type { UserProfile } from '@/lib/auth';
 import { sendLoginNotificationEmail } from '@/lib/mail';
 import { prisma } from '@/lib/prisma';
+import { formatPersonDisplayName } from '@/lib/user-display-name';
 import type { NextApiRequest } from 'next';
 
 /** Affichage lisible pour connexions locales (dev : navigateur → localhost). */
@@ -72,8 +73,7 @@ export async function recordSuccessfulLogin(
   if (!mail) return;
 
   const displayName =
-    [profile.prenom, profile.nom].filter(Boolean).join(' ').trim() ||
-    profile.username;
+    formatPersonDisplayName(profile) || profile.username;
 
   void sendLoginNotificationEmail(mail, {
     displayName,

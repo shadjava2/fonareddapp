@@ -1,12 +1,15 @@
+import ProfileModal from '@/components/auth/ProfileModal';
 import Button from '@/components/ui/Button';
 import NotificationBell from '@/components/ui/NotificationBell';
 import { useAuth, usePermissions } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/useToast';
 import {
   ADMIN_ZONE_PERMISSIONS,
   API_ADMIN,
   PERMISSIONS,
 } from '@/lib/rbac';
 import { cn } from '@/lib/utils';
+import { formatPersonDisplayName } from '@/lib/user-display-name';
 import {
   ArrowRightOnRectangleIcon,
   Bars3Icon,
@@ -15,6 +18,7 @@ import {
   ClockIcon,
   Cog6ToothIcon,
   ShieldCheckIcon,
+  UserCircleIcon,
   UserGroupIcon,
   UserIcon,
   XMarkIcon,
@@ -39,7 +43,9 @@ type ShellNavItem = {
 
 const AppShell: React.FC<AppShellProps> = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { user, logout } = useAuth();
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const { user, logout, checkAuth } = useAuth();
+  const { showSuccess, showError } = useToast();
   const { hasAnyPermission } = usePermissions();
   const serviceIds = user?.services ?? [];
   const router = useRouter();
@@ -67,6 +73,16 @@ const AppShell: React.FC<AppShellProps> = ({ children }) => {
   const handleLogout = async () => {
     await logout();
     router.push('/');
+  };
+
+  const openProfile = () => {
+    setSidebarOpen(false);
+    setProfileModalOpen(true);
+  };
+
+  const handleProfileSuccess = async () => {
+    await checkAuth();
+    showSuccess('Profil', 'Vos modifications ont été enregistrées.');
   };
 
   let navigation: ShellNavItem[];
@@ -213,7 +229,7 @@ const AppShell: React.FC<AppShellProps> = ({ children }) => {
   }
 
   const userDisplayName = user
-    ? `${user.nom || ''} ${user.prenom || ''}`.trim() || user.username
+    ? formatPersonDisplayName(user) || user.username
     : 'Utilisateur';
 
   return (
@@ -246,7 +262,7 @@ const AppShell: React.FC<AppShellProps> = ({ children }) => {
             user={user}
             serviceIds={serviceIds}
             userDisplayName={userDisplayName}
-            onLogout={handleLogout}
+            onOpenProfile={openProfile}
           />
         </div>
       </div>
@@ -259,7 +275,7 @@ const AppShell: React.FC<AppShellProps> = ({ children }) => {
             user={user}
             serviceIds={serviceIds}
             userDisplayName={userDisplayName}
-            onLogout={handleLogout}
+            onOpenProfile={() => setProfileModalOpen(true)}
           />
         </div>
       </div>
@@ -289,14 +305,32 @@ const AppShell: React.FC<AppShellProps> = ({ children }) => {
                 {/* Notification Bell */}
                 <NotificationBell />
 
-                <div className="text-sm text-gray-700">
+                <button
+                  type="button"
+                  onClick={() => user && setProfileModalOpen(true)}
+                  className="text-left text-sm text-gray-700 rounded-md px-1 py-0.5 -mx-1 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
+                  disabled={!user}
+                  aria-label="Ouvrir mon profil et le mot de passe"
+                >
                   <div className="font-medium">{userDisplayName}</div>
                   <div className="text-gray-500">
                     {serviceIds.length} service
                     {serviceIds.length > 1 ? 's' : ''} autorisé
                     {serviceIds.length > 1 ? 's' : ''}
                   </div>
-                </div>
+                </button>
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => user && setProfileModalOpen(true)}
+                  disabled={!user}
+                  className="hidden sm:flex items-center space-x-2"
+                  aria-label="Mon profil"
+                >
+                  <UserCircleIcon className="h-4 w-4" />
+                  <span>Profil</span>
+                </Button>
 
                 <Button
                   variant="ghost"
@@ -321,6 +355,25 @@ const AppShell: React.FC<AppShellProps> = ({ children }) => {
           </div>
         </main>
       </div>
+
+      {user && (
+        <ProfileModal
+          isOpen={profileModalOpen}
+          user={{
+            id: user.id,
+            nom: user.nom,
+            prenom: user.prenom,
+            username: user.username,
+            mail: user.mail,
+            phone: user.phone,
+            fkRole: user.fkRole,
+            roleNom: user.roleNom ?? null,
+          }}
+          onClose={() => setProfileModalOpen(false)}
+          onSuccess={handleProfileSuccess}
+          onError={(message) => showError('Profil', message)}
+        />
+      )}
     </div>
   );
 };
@@ -330,7 +383,7 @@ interface SidebarContentProps {
   user: any;
   serviceIds: number[];
   userDisplayName: string;
-  onLogout: () => void;
+  onOpenProfile: () => void;
 }
 
 const SidebarContent: React.FC<SidebarContentProps> = ({
@@ -338,7 +391,7 @@ const SidebarContent: React.FC<SidebarContentProps> = ({
   user,
   serviceIds,
   userDisplayName,
-  onLogout,
+  onOpenProfile,
 }) => {
   return (
     <div className="flex flex-col h-full bg-primary-600">
@@ -383,16 +436,27 @@ const SidebarContent: React.FC<SidebarContentProps> = ({
           })}
         </nav>
 
-        {/* User info */}
-        <div className="flex-shrink-0 flex border-t border-primary-700 p-4">
-          <div className="flex items-center">
+        {/* Profil : informations personnelles et mot de passe */}
+        <div className="flex-shrink-0 border-t border-primary-700 p-2">
+          <button
+            type="button"
+            onClick={() => user && onOpenProfile()}
+            disabled={!user}
+            className={cn(
+              'flex w-full items-center rounded-md p-2 text-left transition-colors',
+              user
+                ? 'hover:bg-primary-700/80 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white/40'
+                : 'opacity-60 cursor-not-allowed'
+            )}
+            aria-label="Modifier mon profil ou mon mot de passe"
+          >
             <div className="flex-shrink-0">
               <div className="h-8 w-8 bg-primary-500 rounded-full flex items-center justify-center">
                 <UserIcon className="h-5 w-5 text-white" />
               </div>
             </div>
-            <div className="ml-3 flex-1">
-              <p className="text-sm font-medium text-white">
+            <div className="ml-3 min-w-0 flex-1">
+              <p className="text-sm font-medium text-white truncate">
                 {userDisplayName}
               </p>
               <p className="text-xs text-primary-200">
@@ -400,8 +464,13 @@ const SidebarContent: React.FC<SidebarContentProps> = ({
                 {serviceIds.length > 1 ? 's' : ''} autorisé
                 {serviceIds.length > 1 ? 's' : ''}
               </p>
+              {user ? (
+                <p className="text-xs text-primary-100 mt-1 font-medium">
+                  Profil et mot de passe →
+                </p>
+              ) : null}
             </div>
-          </div>
+          </button>
         </div>
       </div>
     </div>

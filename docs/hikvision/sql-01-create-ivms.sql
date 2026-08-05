@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS ivms_attendance (
+  id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  ivms_id BIGINT NULL,
+  auth_datetime DATETIME NOT NULL,
+  auth_date DATE NULL,
+  auth_time VARCHAR(16) NULL,
+  direction VARCHAR(32) NULL,
+  device_name VARCHAR(128) NULL,
+  device_serial VARCHAR(64) NULL,
+  person_name VARCHAR(128) NULL,
+  card_no VARCHAR(64) NULL,
+  employee_no VARCHAR(64) NULL,
+  received_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  normalized_at DATETIME NULL,
+  UNIQUE KEY uniq_ivms_id (ivms_id),
+  KEY idx_ivms_auth_datetime (auth_datetime),
+  KEY idx_ivms_normalized (normalized_at),
+  KEY idx_ivms_person (person_name),
+  KEY idx_ivms_card (card_no)
+);

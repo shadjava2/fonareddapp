@@ -112,6 +112,9 @@ Thumbs.db
 # Prisma
 prisma/migrations/
 
+# Photos ACS / iVMS (générées localement)
+public/uploads/acs/
+
 # PWA
 public/sw.js
 public/workbox-*.js

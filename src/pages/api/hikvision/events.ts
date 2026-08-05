@@ -1,4 +1,6 @@
 import { prisma } from '@/lib/prisma';
+import { effectiveAcsEventClassificationInput } from '@/lib/hikvision/acs-event-ingest-fields';
+import { attendancePresenceCellLabel } from '@/lib/hikvision/attendance-classification';
 import { NextApiRequest, NextApiResponse } from 'next';
 
 interface HikvisionEvent {
@@ -19,8 +21,6 @@ export default async function handler(
 ) {
   if (req.method === 'GET') {
     try {
-      console.log('🔍 Récupération des événements Hikvision...');
-
       const { page = 1, limit = 50, device_ip, employee_no, startTime, endTime } = req.query;
 
       const whereClause: any = {};
@@ -30,7 +30,8 @@ export default async function handler(
       }
 
       if (employee_no) {
-        whereClause.employee_no = employee_no;
+        const emp = String(employee_no).trim();
+        whereClause.employee_no = { contains: emp };
       }
 
       if (startTime || endTime) {
@@ -59,20 +60,59 @@ export default async function handler(
         }),
       ]);
 
-      console.log(`🔍 ${events.length} événements trouvés sur ${total} total`);
+      // Ne résoudre les noms ACS que s’il manque person_name sur l’événement
+      const needNameLookup = [
+        ...new Set(
+          events
+            .filter((e) => !String(e.person_name || '').trim())
+            .map((e) => String(e.employee_no || '').trim())
+            .filter(Boolean)
+        ),
+      ];
+      const users =
+        needNameLookup.length > 0
+          ? await prisma.acs_users.findMany({
+              where: { employee_no: { in: needNameLookup } },
+              select: { employee_no: true, name: true },
+            })
+          : [];
+      const nameByEmployee = new Map(
+        users.map((u) => [String(u.employee_no).trim(), u.name?.trim() || ''])
+      );
 
-      const formattedEvents = events.map((event) => ({
-        id: event.id.toString(),
-        device_ip: event.device_ip,
-        event_index: event.event_index.toString(),
-        event_time: event.event_time.toISOString(),
-        event_type: event.event_type,
-        door_no: event.door_no,
-        direction: event.direction,
-        card_no: event.card_no,
-        employee_no: event.employee_no,
-        raw: event.raw,
-      }));
+      const formattedEvents = events.map((event) => {
+        const eff = effectiveAcsEventClassificationInput({
+          direction: event.direction,
+          event_type: event.event_type,
+          raw: event.raw,
+        });
+        const empNo = String(event.employee_no || '').trim();
+        return {
+          id: event.id.toString(),
+          device_ip: event.device_ip,
+          event_index: event.event_index.toString(),
+          event_time: event.event_time.toISOString(),
+          event_type: event.event_type,
+          event_type_effective: eff.event_type,
+          door_no: event.door_no,
+          direction: event.direction,
+          direction_effective: eff.direction,
+          presence_label: attendancePresenceCellLabel(
+            eff.direction,
+            eff.event_type
+          ),
+          card_no: event.card_no,
+          employee_no: event.employee_no,
+          employee_name:
+            event.person_name?.trim() ||
+            nameByEmployee.get(empNo) ||
+            undefined,
+          source: event.source,
+          data_source: event.data_source,
+          custom_status: event.custom_status,
+          raw: event.raw,
+        };
+      });
 
       return res.status(200).json({
         success: true,

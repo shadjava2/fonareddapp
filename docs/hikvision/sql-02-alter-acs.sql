@@ -1,0 +1,8 @@
+ALTER TABLE acs_events ADD COLUMN person_name VARCHAR(128) NULL;
+ALTER TABLE acs_events ADD COLUMN checkpoint VARCHAR(255) NULL;
+ALTER TABLE acs_events ADD COLUMN device_serial VARCHAR(64) NULL;
+ALTER TABLE acs_events ADD COLUMN custom_status VARCHAR(128) NULL;
+ALTER TABLE acs_events ADD COLUMN data_source VARCHAR(64) NULL;
+ALTER TABLE acs_events ADD COLUMN source VARCHAR(32) NULL;
+ALTER TABLE acs_events ADD COLUMN photo_path VARCHAR(500) NULL;
+ALTER TABLE acs_users ADD COLUMN face_path VARCHAR(500) NULL;

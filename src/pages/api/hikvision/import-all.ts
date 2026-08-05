@@ -2,7 +2,7 @@ import { HikvisionDigestService } from '@/lib/hikvision-digest';
 import { prisma } from '@/lib/prisma';
 import { NextApiRequest, NextApiResponse } from 'next';
 import { getHikvisionConfig } from './config';
-import { runFullEventImport } from './ingest';
+import { runFullEventImport, repairAcsEventsFromStoredRaw } from './ingest';
 
 /**
  * Import complet : personnes (depuis le lecteur) + tous les événements (par fenêtres).
@@ -68,10 +68,23 @@ export default async function handler(
     }
 
     // 2) Import complet des événements (si l'appareil le supporte)
-    let eventResult = { inserted: 0, skipped: 0, batches: 0 };
+    let eventResult = {
+      inserted: 0,
+      skipped: 0,
+      batches: 0,
+      fetched: 0,
+      monthsProcessed: 0,
+    };
     let eventsError: string | undefined;
+    let repairedEvents = 0;
     try {
       eventResult = await runFullEventImport();
+      try {
+        const r = await repairAcsEventsFromStoredRaw(5000);
+        repairedEvents = r.updated;
+      } catch (repairErr) {
+        console.warn('repairAcsEventsFromStoredRaw:', repairErr);
+      }
     } catch (err: any) {
       eventsError = err?.message ?? 'Appareil non compatible (ex. DS-K1T sans API AcsEvent)';
       console.warn('⚠️ Import événements ignoré:', eventsError);
@@ -91,6 +104,9 @@ export default async function handler(
         inserted: eventResult.inserted,
         skipped: eventResult.skipped,
         batches: eventResult.batches,
+        fetched: eventResult.fetched,
+        monthsProcessed: eventResult.monthsProcessed,
+        repairedFromRaw: repairedEvents,
         ...(eventsError && { error: eventsError }),
       },
     });

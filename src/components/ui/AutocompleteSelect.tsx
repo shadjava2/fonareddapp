@@ -14,6 +14,14 @@ interface Option {
   disabled?: boolean;
 }
 
+function normalizeSearch(s: string): string {
+  return String(s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
 interface AutocompleteSelectProps {
   options: Option[];
   value: string | number | null;
@@ -71,12 +79,16 @@ const AutocompleteSelect: React.FC<AutocompleteSelectProps> = ({
   // Trouver l'option sélectionnée
   const selectedOption = options.find((option) => option.value === value);
 
-  // Filtrer les options basées sur le terme de recherche
+  // Filtrer les options basées sur le terme de recherche (local = temps réel)
   const filteredOptions = externalFilter
     ? options
-    : options.filter((option) =>
-        option.label.toLowerCase().includes(searchTerm.toLowerCase())
-      );
+    : (() => {
+        const q = normalizeSearch(searchTerm);
+        if (!q) return options;
+        return options.filter((option) =>
+          normalizeSearch(option.label).includes(q)
+        );
+      })();
 
   // Gérer la sélection d'une option
   const handleSelect = (option: Option) => {

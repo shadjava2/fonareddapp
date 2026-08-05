@@ -1,6 +1,7 @@
 import { requireApiPermissions } from '@/lib/api-auth';
 import { prisma } from '@/lib/prisma';
 import { API_ADMIN, PERMISSIONS } from '@/lib/rbac';
+import { formatPersonDisplayName } from '@/lib/user-display-name';
 import { NextApiRequest, NextApiResponse } from 'next';
 
 interface AutocompleteUser {
@@ -90,13 +91,8 @@ export default async function handler(
     }
 
     const formattedUsers: AutocompleteUser[] = users.map((user) => {
-      // Construire le label avec nom, postnom, prenom
-      const parts = [
-        user.nom || '',
-        user.postnom || '',
-        user.prenom || '',
-      ].filter((p) => p && p.trim());
-      const fullName = parts.join(' ').trim() || user.username || '';
+      const fullName =
+        formatPersonDisplayName(user) || user.username || '';
 
       return {
         id: user.id.toString(),

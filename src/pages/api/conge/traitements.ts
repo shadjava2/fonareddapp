@@ -1,6 +1,7 @@
 import { getTokenFromRequest, getUserFromToken } from '@/lib/auth';
 import { sendCongeNotification } from '@/lib/email';
 import { prisma } from '@/lib/prisma';
+import { formatPersonDisplayName } from '@/lib/user-display-name';
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 function formatRow(row: any) {
@@ -138,7 +139,7 @@ export default async function handler(
           if (remplacant.mail) {
             destinatairesEmails.push({
               email: remplacant.mail,
-              nom: `${remplacant.nom || ''} ${remplacant.prenom || ''}`.trim(),
+              nom: formatPersonDisplayName(remplacant),
             });
           }
         }
@@ -164,7 +165,7 @@ export default async function handler(
           if (userRole5.mail) {
             destinatairesEmails.push({
               email: userRole5.mail,
-              nom: `${userRole5.nom || ''} ${userRole5.prenom || ''}`.trim(),
+              nom: formatPersonDisplayName(userRole5),
             });
           }
         }
@@ -193,7 +194,7 @@ export default async function handler(
           if (superviseur.mail) {
             destinatairesEmails.push({
               email: superviseur.mail,
-              nom: `${superviseur.nom || ''} ${superviseur.prenom || ''}`.trim(),
+              nom: formatPersonDisplayName(superviseur),
             });
           }
         }
@@ -218,7 +219,7 @@ export default async function handler(
           if (userRole11.mail) {
             destinatairesEmails.push({
               email: userRole11.mail,
-              nom: `${userRole11.nom || ''} ${userRole11.prenom || ''}`.trim(),
+              nom: formatPersonDisplayName(userRole11),
             });
           }
         }
@@ -243,7 +244,7 @@ export default async function handler(
           if (userRole1.mail) {
             destinatairesEmails.push({
               email: userRole1.mail,
-              nom: `${userRole1.nom || ''} ${userRole1.prenom || ''}`.trim(),
+              nom: formatPersonDisplayName(userRole1),
             });
           }
         }
@@ -270,7 +271,7 @@ export default async function handler(
         if (demandeurUser?.mail) {
           destinatairesEmails.push({
             email: demandeurUser.mail,
-            nom: `${demandeurUser.nom || ''} ${demandeurUser.prenom || ''}`.trim(),
+            nom: formatPersonDisplayName(demandeurUser),
           });
         }
       }
@@ -312,7 +313,7 @@ export default async function handler(
           .filter((u) => u && u.mail)
           .map((u) => ({
             email: u!.mail as string,
-            nom: `${u!.nom || ''} ${u!.prenom || ''}`.trim() || 'Utilisateur',
+            nom: formatPersonDisplayName(u!) || 'Utilisateur',
           }));
 
         // Ajouter le demandeur
@@ -342,7 +343,7 @@ export default async function handler(
             allDestinataires.push({
               email: demandeurUser.mail,
               nom:
-                `${demandeurUser.nom || ''} ${demandeurUser.prenom || ''}`.trim() ||
+                formatPersonDisplayName(demandeurUser) ||
                 demande.demandeur,
             });
           }

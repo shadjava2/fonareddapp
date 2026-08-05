@@ -3,6 +3,7 @@ import AdminLayout from '@/components/layout/AdminLayout';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { useToast } from '@/hooks/useToast';
 import { apiDelete, apiGet, apiPost } from '@/lib/fetcher';
+import { formatPersonDisplayName } from '@/lib/user-display-name';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 interface DroitsService {
@@ -13,6 +14,7 @@ interface DroitsService {
     id: number | string;
     nom: string;
     prenom: string;
+    postnom?: string | null;
     username: string;
   };
   service?: {
@@ -31,6 +33,7 @@ interface User {
   id: number;
   nom: string;
   prenom: string | null;
+  postnom?: string | null;
   username: string;
 }
 
@@ -268,7 +271,8 @@ const DroitsServicesPage: React.FC = () => {
                   Droits Services
                 </h1>
                 <p className="text-sm text-gray-600">
-                  Choisissez un utilisateur a droite, cochez ses services a gauche, puis enregistrez.
+                  Choisissez un service a gauche, cochez les agents a droite,
+                  puis enregistrez.
                 </p>
               </div>
             </div>
@@ -424,7 +428,10 @@ const DroitsServicesPage: React.FC = () => {
                             #{ds.id}
                           </td>
                           <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
-                            {ds.utilisateur?.nom} {ds.utilisateur?.prenom || ''}
+                            {ds.utilisateur
+                              ? formatPersonDisplayName(ds.utilisateur) ||
+                                ds.utilisateur.username
+                              : '—'}
                           </td>
                           <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
                             {ds.service?.designation || '-'}
@@ -456,7 +463,12 @@ const DroitsServicesPage: React.FC = () => {
           onClose={() => setDroitsServiceToDelete(null)}
           onConfirm={handleDeleteDroitsService}
           title="Supprimer le droit service"
-          message={`Êtes-vous sûr de vouloir supprimer le droit service de "${droitsServiceToDelete?.utilisateur?.nom} ${droitsServiceToDelete?.utilisateur?.prenom}" ? Cette action est irréversible.`}
+          message={`Êtes-vous sûr de vouloir supprimer le droit service de "${
+            droitsServiceToDelete?.utilisateur
+              ? formatPersonDisplayName(droitsServiceToDelete.utilisateur) ||
+                droitsServiceToDelete.utilisateur.username
+              : ''
+          }" ? Cette action est irréversible.`}
           type="danger"
           confirmText="Supprimer"
           cancelText="Annuler"

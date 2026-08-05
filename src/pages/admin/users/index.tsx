@@ -5,6 +5,7 @@ import SearchBar from '@/components/ui/SearchBar';
 import { useToast } from '@/hooks/useToast';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/fetcher';
 import { PROVISIONAL_RESET_PASSWORD_PLAIN } from '@/lib/provisional-password';
+import { formatPersonDisplayName } from '@/lib/user-display-name';
 import {
   ArrowPathIcon,
   PencilIcon,
@@ -527,8 +528,7 @@ const UsersPage: React.FC = () => {
                       </td>
                       <td className="px-3 py-3 sm:px-4 sm:py-4">
                         <div className="break-words font-medium text-gray-900">
-                          {user.nom} {user.postnom ? user.postnom + ' ' : ''}
-                          {user.prenom || ''}
+                          {formatPersonDisplayName(user) || user.username}
                         </div>
                       </td>
                       <td className="px-3 py-3 sm:px-4 sm:py-4">
@@ -667,7 +667,7 @@ const UsersPage: React.FC = () => {
           onClose={() => setUserToDelete(null)}
           onConfirm={handleDeleteUser}
           title="Supprimer l'utilisateur"
-          message={`Êtes-vous sûr de vouloir supprimer l'utilisateur "${userToDelete?.nom} ${userToDelete?.prenom || ''}" ? Cette action est irréversible.`}
+          message={`Êtes-vous sûr de vouloir supprimer l'utilisateur "${userToDelete ? formatPersonDisplayName(userToDelete) || userToDelete.username : ''}" ? Cette action est irréversible.`}
           type="danger"
           confirmText="Supprimer"
           cancelText="Annuler"
@@ -680,7 +680,7 @@ const UsersPage: React.FC = () => {
           onClose={() => setUserToReset(null)}
           onConfirm={handleConfirmResetPassword}
           title="Réinitialiser le mot de passe (oubli)"
-          message={`Réinitialiser le compte de « ${userToReset?.nom} ${userToReset?.prenom || ''} » (@${userToReset?.username}) ? Le mot de passe sera défini sur « ${DEFAULT_RESET_PASSWORD} ». À la prochaine connexion, l’utilisateur devra choisir un nouveau mot de passe.`}
+          message={`Réinitialiser le compte de « ${userToReset ? formatPersonDisplayName(userToReset) || userToReset.username : ''} » (@${userToReset?.username}) ? Le mot de passe sera défini sur « ${DEFAULT_RESET_PASSWORD} ». À la prochaine connexion, l’utilisateur devra choisir un nouveau mot de passe.`}
           type="warning"
           confirmText={`Oui, définir ${DEFAULT_RESET_PASSWORD}`}
           cancelText="Annuler"

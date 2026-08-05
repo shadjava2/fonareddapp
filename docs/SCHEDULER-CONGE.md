@@ -1,212 +1,137 @@
-# Scheduler de Mise à Jour Mensuelle des Soldes de Congé
+# Scheduler de recalibrage mensuel des soldes de congé
 
-Ce document explique comment configurer et utiliser le scheduler automatique pour mettre à jour les soldes de congé mensuellement.
+Recalibrage automatique des soldes (`congesolde`) au **début** de chaque mois (idéalement le 1er à 00:05).
 
-## Fonctionnement
+## Règles
 
-Le scheduler met à jour les soldes de congé (`congesolde`) à la fin de chaque mois selon les règles suivantes :
+Avec `nbjourMois` (Config Congé) :
 
-### Règles Mensuelles
+| Mois | Comportement |
+|------|----------------|
+| **Janvier** | Tout à **zéro** (`solde` + `soldeConsomme`) ; plafond NJ réinitialisé |
+| **Février → Octobre** | Restant = `(mois − 1) × nbjourMois` − consommé |
+| **Novembre** | Double anticipé : crédite aussi **décembre** → `12 × nbjourMois` − consommé |
+| **Décembre** | Maintient `12 × nbjourMois` − consommé |
 
-1. **Janvier à Octobre** : Ajoute `nbjourMois` (depuis `congeconfig`) au solde de chaque utilisateur actif
-2. **Novembre** : Ajoute `nbjourMois * 2` jours (pour compenser le mois de janvier où rien n'est ajouté)
-3. **Décembre** : Remet tous les soldes (`solde` et `soldeConsomme`) à 0
+Exemple si `nbjourMois = 2` :
 
-### Exemple
+- Août → 7 × 2 = **14 j.** prévus (− consommé)
+- Novembre → 12 × 2 = **24 j.** prévus (− consommé)
+- Janvier → **0 / 0**
+- Février → 1 × 2 = **2 j.** prévus (− consommé)
 
-Si `nbjourMois = 2.5` :
-
-- Février à Octobre : +2.5 jours par mois pour chaque utilisateur
-- Novembre : +5 jours (2.5 \* 2) pour compenser janvier
-- Décembre : Remise à zéro de tous les soldes
+La correction manuelle (Répertoire du personnel) utilise **la même logique**.
 
 ## Configuration
 
-### 1. Variable d'environnement (optionnel mais recommandé)
+### 1. Secret (recommandé)
 
-Pour sécuriser l'endpoint, définissez une clé secrète dans `.env` :
+Dans `.env` :
 
 ```bash
 SCHEDULER_SECRET=votre-cle-secrete-super-securisee
 ```
 
-### 2. Configuration du nombre de jours par mois
+### 2. `nbjourMois`
 
-Assurez-vous que la configuration `congeconfig` est définie avec `nbjourMois` :
-
-- Via l'interface : Module Congé > Config Congé
-- Via l'API : `PUT /api/admin/personnel/config-conge` avec `{ "nbjourMois": 2.5 }`
+Module Congé → Config Congé, ou `PUT /api/admin/personnel/config-conge`.
 
 ## Utilisation
 
-### Test Manuel
-
-Pour tester le scheduler manuellement (en développement) :
+### Test manuel
 
 ```bash
-# Méthode 1 : Via npm script
 npm run scheduler:monthly
 
-# Méthode 2 : Via curl
+# ou
 curl -X POST http://localhost:3000/api/conge/scheduler/monthly-update \
   -H "Content-Type: application/json" \
   -d '{"secret": "default-secret-change-me"}'
 
-# Méthode 3 : Via le script Node.js directement
+# ou
 node scripts/scheduler-monthly-update.js [secret]
 ```
 
-### Configuration Cron (Production)
-
-Pour exécuter automatiquement le scheduler à la fin de chaque mois, configurez un cron job.
+### Cron (production) — **1er du mois**
 
 #### Linux/macOS
-
-1. Ouvrez le crontab :
 
 ```bash
 crontab -e
 ```
 
-2. Ajoutez cette ligne pour exécuter le dernier jour de chaque mois à 23h59 :
-
 ```bash
-# Scheduler mensuel des soldes de congé
-# Exécute le dernier jour de chaque mois à 23h59
-59 23 28-31 * * /usr/bin/node /chemin/vers/votre/projet/scripts/scheduler-monthly-update.js > /var/log/conge-scheduler.log 2>&1
+# Recalibrage soldes congé — 1er de chaque mois à 00:05
+5 0 1 * * /usr/bin/node /chemin/vers/votre/projet/scripts/scheduler-monthly-update.js > /var/log/conge-scheduler.log 2>&1
 ```
 
-3. Pour une exécution plus précise (dernier jour réel du mois), utilisez :
+#### Windows (Planificateur de tâches)
 
-```bash
-# Script wrapper qui vérifie si on est le dernier jour du mois
-59 23 28-31 * * /chemin/vers/votre/projet/scripts/check-last-day.sh
-```
+- Déclencheur : Mensuel, jour **1**, heure **00:05**
+- Programme : `node.exe`
+- Arguments : `C:\chemin\vers\votre\projet\scripts\scheduler-monthly-update.js`
+- Dossier de travail : le projet
 
-#### Windows (Task Scheduler)
+#### Service web (cron-job.org, etc.)
 
-1. Ouvrez le Planificateur de tâches Windows
-2. Créez une nouvelle tâche
-3. Définissez le déclencheur :
-   - Type : Mensuel
-   - Mois : Tous
-   - Jour : Dernier jour du mois
-   - Heure : 23:59
-4. Action :
-   - Programme : `node.exe`
-   - Arguments : `C:\chemin\vers\votre\projet\scripts\scheduler-monthly-update.js`
-   - Dossier de travail : `C:\chemin\vers\votre\projet`
+- URL : `https://votre-domaine.com/api/conge/scheduler/monthly-update`
+- Méthode : POST
+- Corps : `{"secret": "votre-cle-secrete"}`
+- Fréquence : **1er du mois**, 00:05
 
-#### Via un Service Web (Exemple : cron-job.org, EasyCron)
-
-1. Créez un compte sur un service de cron en ligne
-2. Configurez :
-   - URL : `https://votre-domaine.com/api/conge/scheduler/monthly-update`
-   - Méthode : POST
-   - Corps : `{"secret": "votre-cle-secrete"}`
-   - Fréquence : Mensuel, dernier jour à 23h59
-   - Headers : `Content-Type: application/json`
-
-## Script Wrapper pour Vérifier le Dernier Jour du Mois
-
-Créez `scripts/check-last-day.sh` :
-
-```bash
-#!/bin/bash
-
-# Vérifier si aujourd'hui est le dernier jour du mois
-TODAY=$(date +%d)
-LAST_DAY=$(date -d "$(date +%Y-%m-01) +1 month -1 day" +%d)
-
-if [ "$TODAY" = "$LAST_DAY" ]; then
-    echo "$(date): Exécution du scheduler mensuel..."
-    /usr/bin/node /chemin/vers/votre/projet/scripts/scheduler-monthly-update.js
-else
-    echo "$(date): Pas le dernier jour du mois, skip."
-fi
-```
-
-Rendez-le exécutable :
-
-```bash
-chmod +x scripts/check-last-day.sh
-```
-
-## API Endpoint
+## API
 
 ### POST `/api/conge/scheduler/monthly-update`
 
-**Corps de la requête :**
-
 ```json
-{
-  "secret": "votre-cle-secrete"
-}
+{ "secret": "votre-cle-secrete" }
 ```
 
-**Réponse (succès) :**
+Réponse typique :
 
 ```json
 {
   "success": true,
-  "message": "2.5 jour(s) ajouté(s) à 10 utilisateur(s) pour Février",
+  "message": "Recalibrage Août : 40 agent(s) — 7 mois × 2 j. (− consommé).",
   "details": {
-    "month": 2,
-    "monthName": "Février",
-    "nbjourMois": 2.5,
-    "joursAjoutes": 25,
-    "utilisateursTraites": 10
+    "month": 8,
+    "monthName": "Août",
+    "nbjourMois": 2,
+    "monthsCounted": 7,
+    "totalPrevuSansConso": 14,
+    "utilisateursTraites": 40,
+    "resetYear": false,
+    "plafondNonJustifie": 0
   }
 }
 ```
 
-**Réponse (décembre - remise à zéro) :**
+Janvier :
 
 ```json
 {
   "success": true,
-  "message": "Tous les soldes ont été remis à zéro pour décembre",
+  "message": "Janvier : 40 solde(s) remis à zéro (NJ plafond 0).",
   "details": {
-    "month": 12,
-    "monthName": "Décembre",
-    "nbjourMois": 2.5,
-    "joursAjoutes": 0,
-    "utilisateursTraites": 10,
-    "totalSoldesResets": 10
+    "month": 1,
+    "monthName": "Janvier",
+    "monthsCounted": 0,
+    "totalPrevuSansConso": 0,
+    "utilisateursTraites": 40,
+    "resetYear": true
   }
 }
 ```
-
-## Logs
-
-Les logs sont disponibles :
-
-- Console du serveur Next.js (si exécuté manuellement)
-- Fichier de log défini dans le cron job
-- Logs de l'application (via console.log)
 
 ## Sécurité
 
-- En **développement** : Le secret est optionnel
-- En **production** : Le secret est **obligatoire** (définissez `SCHEDULER_SECRET` dans `.env`)
+- **Développement** : secret optionnel
+- **Production** : `SCHEDULER_SECRET` obligatoire
 
 ## Dépannage
 
-### Le scheduler ne s'exécute pas
-
-1. Vérifiez que le serveur Next.js est en cours d'exécution
-2. Vérifiez les logs du cron job : `tail -f /var/log/conge-scheduler.log`
-3. Testez manuellement : `npm run scheduler:monthly`
-4. Vérifiez la configuration `congeconfig` : `nbjourMois` doit être défini
-
-### Erreur "Clé secrète invalide"
-
-1. Vérifiez que `SCHEDULER_SECRET` est défini dans `.env`
-2. Assurez-vous que le secret dans la requête correspond à celui dans `.env`
-3. En développement, vous pouvez tester sans secret (non recommandé en production)
-
-### Les soldes ne sont pas mis à jour
-
-1. Vérifiez que les utilisateurs ont `locked = false` (utilisateurs actifs)
-2. Vérifiez les logs pour voir combien d'utilisateurs ont été traités
-3. Vérifiez que la configuration `congeconfig` existe avec `nbjourMois > 0`
+1. Serveur Next.js démarré (`PORT` / `HOST` alignés avec le script)
+2. Logs cron : `tail -f /var/log/conge-scheduler.log`
+3. Test : `npm run scheduler:monthly`
+4. `congeconfig.nbjourMois > 0`
+5. Utilisateurs actifs : `locked = false`

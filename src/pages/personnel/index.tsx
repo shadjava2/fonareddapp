@@ -35,9 +35,12 @@ interface RecentEvent {
   id: string;
   device_ip: string;
   event_type: string;
+  event_type_effective?: string;
   employee_no: string;
   event_time: string;
   direction?: string;
+  direction_effective?: string | null;
+  presence_label?: string;
 }
 
 const PersonnelPage: React.FC = () => {
@@ -146,7 +149,14 @@ const PersonnelPage: React.FC = () => {
         success: boolean;
         message?: string;
         users?: { imported: number; created: number; updated: number };
-        events?: { inserted: number; skipped: number; batches: number; error?: string };
+        events?: {
+          inserted: number;
+          skipped: number;
+          batches: number;
+          fetched?: number;
+          repairedFromRaw?: number;
+          error?: string;
+        };
       }>('/api/hikvision/import-all', {});
       if (res.success) {
         const u = res.users;
@@ -154,7 +164,13 @@ const PersonnelPage: React.FC = () => {
         const parts = [];
         if (u) parts.push(`${u.imported} personne(s) (${u.created} créées, ${u.updated} mises à jour)`);
         if (e?.error) parts.push(`Événements : ${e.error}`);
-        else if (e && e.inserted > 0) parts.push(`${e.inserted} événement(s) importés`);
+        else if (e) {
+          let evMsg = `${e.inserted} événement(s) importés, ${e.skipped ?? 0} ignoré(s)`;
+          if (e.fetched != null) evMsg += `, ${e.fetched} reçu(s)`;
+          if (e.repairedFromRaw)
+            evMsg += `, ${e.repairedFromRaw} corrigé(s) depuis le JSON lecteur`;
+          parts.push(evMsg);
+        }
         showSuccess(parts.length ? parts.join(' • ') : res.message ?? 'Import terminé.');
         await fetchPersonnelData();
       } else {
@@ -460,6 +476,23 @@ const PersonnelPage: React.FC = () => {
               </div>
             </div>
           </Link>
+
+          <Link
+            href="/personnel/presence-monitoring"
+            className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition duration-200"
+          >
+            <div className="flex items-center">
+              <ExclamationTriangleIcon className="h-8 w-8 text-amber-600 mr-4" />
+              <div>
+                <h3 className="text-lg font-medium text-gray-900">
+                  Monitoring de présence
+                </h3>
+                <p className="text-sm text-gray-500">
+                  KPI, blâmes, explications (notes circulaires)
+                </p>
+              </div>
+            </div>
+          </Link>
         </div>
 
         {/* Événements récents */}
@@ -489,7 +522,14 @@ const PersonnelPage: React.FC = () => {
               </div>
             ) : (
               <div className="space-y-4">
-                {recentEvents.map((event) => (
+                {recentEvents.map((event) => {
+                  const typeUi =
+                    event.event_type_effective ?? event.event_type;
+                  const dirUi =
+                    event.direction_effective ?? event.direction;
+                  const presence =
+                    event.presence_label ?? dirUi ?? event.direction;
+                  return (
                   <div
                     key={event.id}
                     className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
@@ -504,24 +544,25 @@ const PersonnelPage: React.FC = () => {
                       </div>
                       <div className="ml-4">
                         <p className="text-sm font-medium text-gray-900">
-                          {getEventTypeLabel(event.event_type)}
+                          {getEventTypeLabel(typeUi)}
                         </p>
                         <p className="text-sm text-gray-500">
-                          Employé: {event.employee_no || 'N/A'} •
-                          {event.direction && ` Direction: ${event.direction}`}
+                          Employé: {event.employee_no || 'N/A'}
+                          {presence ? ` • ${presence}` : ''}
                         </p>
                       </div>
                     </div>
                     <div className="text-right">
                       <p
-                        className={`text-sm font-medium ${getEventTypeColor(event.event_type)}`}
+                        className={`text-sm font-medium ${getEventTypeColor(typeUi)}`}
                       >
                         {formatEventTime(event.event_time)}
                       </p>
                       <p className="text-xs text-gray-500">{event.device_ip}</p>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

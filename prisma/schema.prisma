@@ -31,6 +31,7 @@ model utilisateurs {
   droitsServices        droits_services[]
   connexionHistoriques  ConnexionHistorique[]
   retraitsNonJustifies  CongeNonJustifieRetrait[]
+  acsUsers              acs_users[]
 
   @@index([fkRole, id], map: "fkroleindexuser")
   @@index([fkFonction], map: "fkfonctionindexuser")
@@ -238,18 +239,22 @@ model congesolde {
 
 /// Historique des retraits de congés non justifiés
 model CongeNonJustifieRetrait {
-  id             BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
-  fkUtilisateur  BigInt   @db.UnsignedBigInt
-  nbrjours       Float    @db.Float
-  commentaire    String?  @db.VarChar(500)
-  resteApres     Float?   @db.Float
-  datecreate     DateTime @default(now()) @db.Timestamp(0)
-  usercreateid   BigInt?  @db.UnsignedBigInt
+  id             BigInt    @id @default(autoincrement()) @db.UnsignedBigInt
+  fkUtilisateur  BigInt    @db.UnsignedBigInt
+  nbrjours       Float     @db.Float
+  commentaire    String?   @db.VarChar(500)
+  resteApres     Float?    @db.Float
+  /// Période couverte (pour affichage dans les rapports de présence)
+  dateDebut      DateTime? @db.Date
+  dateFin        DateTime? @db.Date
+  datecreate     DateTime  @default(now()) @db.Timestamp(0)
+  usercreateid   BigInt?   @db.UnsignedBigInt
 
   utilisateur utilisateurs @relation(fields: [fkUtilisateur], references: [id], onDelete: Cascade)
 
   @@index([fkUtilisateur], map: "fk_nj_user")
   @@index([datecreate], map: "idx_nj_date")
+  @@index([dateDebut, dateFin], map: "idx_nj_periode")
   @@map("congenonjustifie_retrait")
 }
 
@@ -351,33 +356,78 @@ model acs_cards {
 }
 
 model acs_events {
-  id          BigInt   @id @default(autoincrement())
-  device_ip   String   @db.VarChar(64)
-  event_index BigInt
-  event_time  DateTime
-  event_type  String   @db.VarChar(64)
-  door_no     Int?
-  direction   String?  @db.VarChar(16)
-  card_no     String?  @db.VarChar(64)
-  employee_no String?  @db.VarChar(64)
-  raw         Json
+  id            BigInt   @id @default(autoincrement())
+  device_ip     String   @db.VarChar(64)
+  event_index   BigInt
+  event_time    DateTime
+  event_type    String   @db.VarChar(64)
+  door_no       Int?
+  direction     String?  @db.VarChar(16)
+  card_no       String?  @db.VarChar(64)
+  employee_no   String?  @db.VarChar(64)
+  /// Nom personne (iVMS / CSV) pour affichage si pas encore dans acs_users
+  person_name   String?  @db.VarChar(128)
+  /// Point de contrôle iVMS (ex. Fonaredd_Door1_Entrance…)
+  checkpoint    String?  @db.VarChar(255)
+  device_serial String?  @db.VarChar(64)
+  /// Libellé Custom Name iVMS (Entrée Service, …)
+  custom_status String?  @db.VarChar(128)
+  data_source   String?  @db.VarChar(64)
+  /// Origine : ivms_push | ivms_csv | isapi | manual
+  source        String?  @db.VarChar(32)
+  photo_path    String?  @db.VarChar(500)
+  raw           Json
 
   @@unique([device_ip, event_index], map: "uniq_device_event")
   @@index([card_no], map: "idx_card")
   @@index([employee_no], map: "idx_employee")
   @@index([event_time], map: "idx_time")
+  @@index([checkpoint], map: "idx_checkpoint")
+  @@index([source], map: "idx_source")
 }
 
 model acs_users {
-  id          BigInt  @id @default(autoincrement())
-  device_ip   String  @db.VarChar(64)
-  employee_no String  @db.VarChar(64)
-  name        String?
-  department  String?
-  raw         Json
+  id             BigInt  @id @default(autoincrement())
+  device_ip      String  @db.VarChar(64)
+  employee_no    String  @db.VarChar(64)
+  name           String?
+  department     String?
+  face_path      String? @db.VarChar(500)
+  /// Lien optionnel vers le compte applicatif (rapports : nom / fonction / rôle / service)
+  system_user_id BigInt? @db.UnsignedBigInt
+  raw            Json
+
+  systemUser utilisateurs? @relation(fields: [system_user_id], references: [id], onDelete: SetNull)
 
   @@unique([device_ip, employee_no], map: "uniq_device_employee")
+  @@unique([system_user_id], map: "uniq_acs_system_user")
   @@index([name], map: "idx_name")
+}
+
+/// Table tampon écrite par iVMS-4200 (Third-Party Database → MySQL).
+/// Configurer le mapping iVMS sur ces noms de colonnes exacts.
+model ivms_attendance {
+  id            BigInt    @id @default(autoincrement())
+  /// ID fourni par iVMS (champ « ID »)
+  ivms_id       BigInt?   @unique(map: "uniq_ivms_id")
+  auth_datetime DateTime  @db.DateTime(0)
+  auth_date     DateTime? @db.Date
+  auth_time     String?   @db.VarChar(16)
+  direction     String?   @db.VarChar(32)
+  device_name   String?   @db.VarChar(128)
+  device_serial String?   @db.VarChar(64)
+  person_name   String?   @db.VarChar(128)
+  card_no       String?   @db.VarChar(64)
+  /// Optionnel si vous mappez un champ Person ID côté iVMS
+  employee_no   String?   @db.VarChar(64)
+  received_at   DateTime  @default(now()) @db.DateTime(0)
+  normalized_at DateTime? @db.DateTime(0)
+
+  @@index([auth_datetime], map: "idx_ivms_auth_datetime")
+  @@index([normalized_at], map: "idx_ivms_normalized")
+  @@index([person_name], map: "idx_ivms_person")
+  @@index([card_no], map: "idx_ivms_card")
+  @@map("ivms_attendance")
 }
 
 /// Configuration du lecteur Hikvision (source de vérité en base)
@@ -391,6 +441,70 @@ model hikvision_config {
   updated_at            DateTime @updatedAt @db.DateTime(0)
 
   @@map("hikvision_config")
+}
+
+/// Règles Timetable présence (aligné iVMS Default Timetable) — une ligne id=1
+model presence_rules {
+  id                            Int      @id @default(1)
+  /// HH:mm — fin plage « à l’heure » (entrée)
+  start_work_time               String   @default("08:30") @db.VarChar(8)
+  /// HH:mm — fin de service (sortie)
+  end_work_time                 String   @default("18:00") @db.VarChar(8)
+  /// Entrée — à l’heure dès
+  checkin_valid_from            String   @default("08:00") @db.VarChar(8)
+  /// Entrée — absent dès
+  checkin_valid_to              String   @default("09:30") @db.VarChar(8)
+  /// Entrée — retard dès
+  late_from                     String   @default("08:40") @db.VarChar(8)
+  /// Entrée — retard jusqu’à
+  late_until                    String   @default("09:10") @db.VarChar(8)
+  /// Sortie — fenêtre normale dès
+  checkout_valid_from           String   @default("17:30") @db.VarChar(8)
+  /// Sortie — fenêtre normale jusqu’à
+  checkout_valid_to             String   @default("18:30") @db.VarChar(8)
+  late_allowable_minutes        Int      @default(10)
+  early_leave_allowable_minutes Int      @default(10)
+  /// Legacy — non utilisé si checkin_valid_to est renseigné
+  absent_after_hours            Int      @default(3)
+  /// Sortie/Retour Mission (Break) comptés comme présence
+  count_mission_as_presence     Boolean  @default(true)
+  score_on_time                 Int      @default(100)
+  score_late                    Int      @default(70)
+  score_early_leave             Int      @default(80)
+  score_late_exit               Int      @default(90)
+  score_absent                  Int      @default(0)
+  score_mission_day             Int      @default(95)
+  excellent_min                 Int      @default(90)
+  bon_min                       Int      @default(75)
+  moyen_min                     Int      @default(50)
+  updated_at                    DateTime @updatedAt @db.DateTime(0)
+
+  @@map("presence_rules")
+}
+
+/// Actions gestionnaire sur les cas détectés par le monitoring de présence (notes circulaires)
+model PresenceMonitoringAction {
+  id             BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  employee_no    String   @db.VarChar(64)
+  year           Int
+  /// Mois 1–12 (0 = cas annuel)
+  month          Int      @db.TinyInt
+  rule_code      String   @db.VarChar(32)
+  /// pending | observation | explication_demandee | blame_declenche | revocation_proposee | retrait_conge_fait | justification_recue
+  action         String   @default("pending") @db.VarChar(40)
+  metric_value   Float?   @db.Float
+  /// JSON : dates, jours débités, flags idempotence…
+  detail         String?  @db.Text
+  notes          String?  @db.VarChar(500)
+  datecreate     DateTime @default(now()) @db.Timestamp(0)
+  dateupdate     DateTime @default(now()) @updatedAt @db.Timestamp(0)
+  usercreateid   BigInt?  @db.UnsignedBigInt
+  userupdateid   BigInt?  @db.UnsignedBigInt
+
+  @@unique([employee_no, year, month, rule_code], map: "uniq_presence_mon_case")
+  @@index([year, month], map: "idx_presence_mon_period")
+  @@index([action], map: "idx_presence_mon_action")
+  @@map("presence_monitoring_action")
 }
 
 model ad_item {

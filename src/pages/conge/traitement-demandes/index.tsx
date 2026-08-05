@@ -7,7 +7,10 @@ import { useAuth } from '@/hooks/useAuth';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useToast } from '@/hooks/useToast';
 import { apiGet, apiPut } from '@/lib/fetcher';
+import { cn } from '@/lib/utils';
+import { formatPersonDisplayName } from '@/lib/user-display-name';
 import {
+  ChevronRightIcon,
   ClipboardDocumentCheckIcon,
   PrinterIcon,
 } from '@heroicons/react/24/outline';
@@ -71,6 +74,11 @@ const TraitementDemandesPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [notificationCount, setNotificationCount] = useState(0);
   const [showTraitesOnly, setShowTraitesOnly] = useState(false);
+  /** Ligne principale = une demande ; le modal liste toutes les phases */
+  const [detailDemandeRow, setDetailDemandeRow] = useState<{
+    fkDemande: number;
+    traitements: Traitement[];
+  } | null>(null);
 
   // État pour suivre les chargements individuels
   const [fetchingTraitements, setFetchingTraitements] = useState(false);
@@ -101,6 +109,16 @@ const TraitementDemandesPage: React.FC = () => {
             fkPhase:
               traitement.fkPhase !== undefined && traitement.fkPhase !== null
                 ? Number.parseInt(String(traitement.fkPhase), 10)
+                : undefined,
+            userupdateid:
+              traitement.userupdateid !== undefined &&
+              traitement.userupdateid !== null
+                ? Number.parseInt(String(traitement.userupdateid), 10)
+                : undefined,
+            usercreateid:
+              traitement.usercreateid !== undefined &&
+              traitement.usercreateid !== null
+                ? Number.parseInt(String(traitement.usercreateid), 10)
                 : undefined,
           }))
         );
@@ -321,6 +339,7 @@ const TraitementDemandesPage: React.FC = () => {
 
   const handleTraiter = useCallback(
     async (traitement: Traitement) => {
+      setDetailDemandeRow(null);
       startActionLoader(
         'Chargement du formulaire...',
         'Vérification des prérequis'
@@ -701,7 +720,7 @@ const TraitementDemandesPage: React.FC = () => {
                       const user = t.userupdate || {};
                       const fullName =
                         user.fullName ||
-                        `${user.nom || ''} ${user.prenom || ''}`.trim() ||
+                        formatPersonDisplayName(user) ||
                         user.username ||
                         'N/A';
                       const fonction = user.fonction || 'N/A';
@@ -983,14 +1002,12 @@ const TraitementDemandesPage: React.FC = () => {
   };
 
   // Fonction pour vérifier si un traitement est traité
-  const isTraitementTraite = (traitement: Traitement): boolean => {
-    // Un traitement est considéré comme "traité" s'il a des observations
-    // ET (approbation !== null OU conformite !== null)
+  const isTraitementTraite = useCallback((traitement: Traitement): boolean => {
     return !!(
       traitement.observations &&
       (traitement.approbation !== null || traitement.conformite !== null)
     );
-  };
+  }, []);
 
   // Fonctions helper mémorisées pour éviter les recalculs
   const getDemandeLabelMemo = useCallback(
@@ -1063,7 +1080,71 @@ const TraitementDemandesPage: React.FC = () => {
     showTraitesOnly,
     getDemandeLabelMemo,
     getPhaseLabelMemo,
+    isTraitementTraite,
   ]);
+
+  /** Une ligne par demande ; phases agrégées depuis la liste complète */
+  const demandeRows = useMemo(() => {
+    const idSet = new Set<number>();
+    for (const t of filteredTraitements) {
+      if (t.fkDemande != null && !Number.isNaN(Number(t.fkDemande))) {
+        idSet.add(t.fkDemande);
+      }
+    }
+    const userId = Number(user?.id);
+    return Array.from(idSet)
+      .map((fkDemande) => {
+        const allForDemande = traitements
+          .filter((t) => t.fkDemande === fkDemande)
+          .sort((a, b) => (a.fkPhase ?? 0) - (b.fkPhase ?? 0));
+        const demande = demandes.find((d) => d.id === fkDemande);
+        const canUserAct = allForDemande.some(
+          (t) => Number(t.userupdateid) === userId && !t.observations
+        );
+        const latest = Math.max(
+          0,
+          ...allForDemande.map((t) =>
+            t.datecreate ? new Date(t.datecreate).getTime() : 0
+          )
+        );
+        const phasesTraitees = allForDemande.filter(isTraitementTraite).length;
+        return {
+          fkDemande,
+          traitements: allForDemande,
+          demande,
+          canUserAct,
+          latest,
+          phasesTraitees,
+          phasesTotal: allForDemande.length,
+        };
+      })
+      .sort((a, b) => b.latest - a.latest);
+  }, [
+    filteredTraitements,
+    traitements,
+    demandes,
+    user?.id,
+    isTraitementTraite,
+  ]);
+
+  useEffect(() => {
+    setDetailDemandeRow((prev) => {
+      if (!prev) return prev;
+      const nextTraitements = traitements
+        .filter((t) => t.fkDemande === prev.fkDemande)
+        .sort((a, b) => (a.fkPhase ?? 0) - (b.fkPhase ?? 0));
+      return { ...prev, traitements: nextTraitements };
+    });
+  }, [traitements]);
+
+  useEffect(() => {
+    if (!detailDemandeRow) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDetailDemandeRow(null);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [detailDemandeRow]);
 
   return (
     <CongeAppShell>
@@ -1098,7 +1179,9 @@ const TraitementDemandesPage: React.FC = () => {
                       fetchingPhases) && <Loader size="sm" className="ml-2" />}
                   </h1>
                   <p className="text-sm text-gray-500">
-                    Traitements de congés assignés à votre compte
+                    Une ligne par demande. Le fond vert clair indique qu&apos;au
+                    moins une phase vous est assignée et attend votre saisie ;
+                    les autres lignes sont grisées (consultation).
                   </p>
                 </div>
               </div>
@@ -1138,11 +1221,11 @@ const TraitementDemandesPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Table */}
+        {/* Liste regroupée par demande */}
         <div className="bg-white shadow rounded-lg overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200">
             <h3 className="text-lg font-medium text-gray-900">
-              Traitements ({filteredTraitements.length})
+              Demandes ({demandeRows.length})
             </h3>
           </div>
           <div className="overflow-x-auto">
@@ -1150,15 +1233,15 @@ const TraitementDemandesPage: React.FC = () => {
               <div className="flex justify-center items-center py-12">
                 <Loader size="lg" text="Chargement des traitements..." />
               </div>
-            ) : filteredTraitements.length === 0 ? (
+            ) : demandeRows.length === 0 ? (
               <div className="text-center py-12">
                 <ClipboardDocumentCheckIcon className="mx-auto h-12 w-12 text-gray-400" />
                 <h3 className="mt-2 text-sm font-medium text-gray-900">
-                  Aucun traitement trouvé
+                  Aucune demande trouvée
                 </h3>
                 <p className="mt-1 text-sm text-gray-500">
                   {searchTerm
-                    ? 'Aucun traitement ne correspond à votre recherche.'
+                    ? 'Aucune demande ne correspond à votre recherche.'
                     : "Vous n'avez aucun traitement assigné à votre compte."}
                 </p>
               </div>
@@ -1166,56 +1249,224 @@ const TraitementDemandesPage: React.FC = () => {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      DEMANDE
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Demande
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      PHASE
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      DEMANDEUR / REMPLACANT / SUPERVISEUR
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      OBSERVATIONS
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      CONFORMITÉ
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      APPROBATION
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      ACTIONS
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
+                      Actions
                     </th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="divide-y divide-gray-200">
                   {loading && !traitements.length ? (
                     <>
-                      <TableRowSkeleton cols={7} />
-                      <TableRowSkeleton cols={7} />
-                      <TableRowSkeleton cols={7} />
+                      <TableRowSkeleton cols={2} />
+                      <TableRowSkeleton cols={2} />
                     </>
                   ) : (
-                    filteredTraitements.map((traitement) => (
-                      <tr key={traitement.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900">
-                            {getDemandeLabelMemo(traitement.fkDemande)}
+                    demandeRows.map((row) => (
+                      <tr
+                        key={row.fkDemande}
+                        tabIndex={0}
+                        aria-label={`Ouvrir le détail de la demande ${row.fkDemande}`}
+                        onClick={() =>
+                          setDetailDemandeRow({
+                            fkDemande: row.fkDemande,
+                            traitements: row.traitements,
+                          })
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setDetailDemandeRow({
+                              fkDemande: row.fkDemande,
+                              traitements: row.traitements,
+                            });
+                          }
+                        }}
+                        className={cn(
+                          'cursor-pointer transition-colors outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500',
+                          row.canUserAct
+                            ? 'bg-emerald-50 hover:bg-emerald-100/90 text-gray-900'
+                            : 'bg-gray-50 text-gray-500 hover:bg-gray-100/80'
+                        )}
+                      >
+                        <td className="px-4 py-3">
+                          <div className="flex items-start gap-2 min-w-0">
+                            <ChevronRightIcon
+                              className={cn(
+                                'h-5 w-5 shrink-0 mt-0.5',
+                                row.canUserAct
+                                  ? 'text-emerald-700'
+                                  : 'text-gray-400'
+                              )}
+                              aria-hidden
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-semibold truncate">
+                                #{row.fkDemande} —{' '}
+                                {row.demande?.demandeur || 'Demandeur N/A'}
+                              </div>
+                              <div className="text-xs truncate mt-0.5">
+                                {row.demande?.du
+                                  ? new Date(row.demande.du).toLocaleDateString(
+                                      'fr-FR'
+                                    )
+                                  : '?'}{' '}
+                                →{' '}
+                                {row.demande?.au
+                                  ? new Date(row.demande.au).toLocaleDateString(
+                                      'fr-FR'
+                                    )
+                                  : '?'}{' '}
+                                · {row.demande?.nbrjour ?? '?'} j. ·{' '}
+                                {row.phasesTraitees}/{row.phasesTotal} phase(s)
+                                {row.canUserAct ? (
+                                  <span className="ml-2 font-medium text-emerald-800">
+                                    — Action requise
+                                  </span>
+                                ) : (
+                                  <span className="ml-2 text-gray-500">
+                                    — Consultation
+                                  </span>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">
-                            {getPhaseLabelMemo(traitement.fkPhase)}
-                          </div>
+                        <td className="px-4 py-3 text-right whitespace-nowrap align-middle">
+                          <button
+                            type="button"
+                            className="inline-flex p-2 rounded-md text-gray-600 hover:bg-white/80 hover:text-gray-900"
+                            title="Imprimer le rapport"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const first = row.traitements[0];
+                              if (first) handleImprimer(first);
+                            }}
+                          >
+                            <PrinterIcon className="h-5 w-5" />
+                          </button>
                         </td>
-                        <td className="px-6 py-4">
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Détail des phases pour une demande */}
+      {detailDemandeRow && (
+        <div
+          className="fixed inset-0 z-[35] overflow-y-auto bg-gray-600/50 backdrop-blur-sm flex items-center justify-center p-4 relative"
+        >
+          <button
+            type="button"
+            tabIndex={-1}
+            className="absolute inset-0 cursor-default"
+            aria-label="Fermer le panneau détail"
+            onClick={() => setDetailDemandeRow(null)}
+          />
+          <div
+            className="relative bg-white rounded-lg shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col z-[1]"
+          >
+            <div className="px-6 py-4 border-b border-gray-200 flex items-start justify-between gap-4 shrink-0">
+              <div className="min-w-0">
+                <h3
+                  id="detail-demande-title"
+                  className="text-lg font-semibold text-gray-900"
+                >
+                  Demande #{detailDemandeRow.fkDemande} — phases de traitement
+                </h3>
+                {(() => {
+                  const d = demandes.find(
+                    (x) => x.id === detailDemandeRow.fkDemande
+                  );
+                  if (!d) return null;
+                  return (
+                    <p className="text-sm text-gray-600 mt-1">
+                      {d.demandeur} ·{' '}
+                      {d.du
+                        ? new Date(d.du).toLocaleDateString('fr-FR')
+                        : '?'}{' '}
+                      →{' '}
+                      {d.au
+                        ? new Date(d.au).toLocaleDateString('fr-FR')
+                        : '?'}{' '}
+                      · {d.nbrjour ?? '?'} jour(s)
+                    </p>
+                  );
+                })()}
+              </div>
+              <button
+                type="button"
+                className="rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700 shrink-0"
+                onClick={() => setDetailDemandeRow(null)}
+              >
+                <span className="sr-only">Fermer</span>
+                <svg
+                  className="h-6 w-6"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth="1.5"
+                  stroke="currentColor"
+                  aria-hidden
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1 min-h-0 p-4">
+              <table className="min-w-full divide-y divide-gray-200 text-sm">
+                <thead className="bg-gray-50 sticky top-0">
+                  <tr>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                      Phase
+                    </th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                      Demandeur / Remplaçant / Superviseur
+                    </th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                      Observations
+                    </th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                      Conformité
+                    </th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                      Approbation
+                    </th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 bg-white">
+                  {detailDemandeRow.traitements.map((traitement) => {
+                    const isMine =
+                      Number(traitement.userupdateid) === Number(user?.id);
+                    const rowHighlight =
+                      isMine && !traitement.observations
+                        ? 'bg-emerald-50/90'
+                        : 'bg-gray-50/80 text-gray-600';
+                    return (
+                      <tr key={traitement.id} className={rowHighlight}>
+                        <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-900">
+                          {getPhaseLabelMemo(traitement.fkPhase)}
+                        </td>
+                        <td className="px-3 py-2">
                           {(() => {
                             const demande = demandes.find(
-                              (d) => d.id === traitement.fkDemande
+                              (de) => de.id === traitement.fkDemande
                             );
                             return (
-                              <div className="text-xs text-gray-700 space-y-1">
+                              <div className="text-xs space-y-0.5">
                                 <div>
                                   <span className="font-semibold">
                                     Demandeur:
@@ -1241,8 +1492,8 @@ const TraitementDemandesPage: React.FC = () => {
                             );
                           })()}
                         </td>
-                        <td className="px-6 py-4">
-                          <div className="text-sm text-gray-900 max-w-xs truncate">
+                        <td className="px-3 py-2 max-w-[14rem]">
+                          <div className="truncate" title={traitement.observations}>
                             {traitement.observations || (
                               <span className="text-gray-400 italic">
                                 Aucune observation
@@ -1250,81 +1501,82 @@ const TraitementDemandesPage: React.FC = () => {
                             )}
                           </div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-2 whitespace-nowrap">
                           {!traitement.observations ? (
-                            // Traitement non fait - toujours "En attente"
-                            <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
+                            <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
                               En attente
                             </span>
                           ) : traitement.conformite === true ? (
-                            <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                            <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-800">
                               Oui
                             </span>
                           ) : traitement.conformite === false ? (
-                            <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
+                            <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-red-100 text-red-800">
                               Non
                             </span>
                           ) : (
-                            <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
+                            <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
                               Non défini
                             </span>
                           )}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
+                        <td className="px-3 py-2 whitespace-nowrap">
                           {!traitement.observations ? (
-                            // Traitement non fait - toujours "En attente"
-                            <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
+                            <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
                               En attente
                             </span>
                           ) : traitement.approbation === true ? (
-                            <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                            <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-800">
                               Approuvé
                             </span>
                           ) : traitement.approbation === false ? (
-                            <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
+                            <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-red-100 text-red-800">
                               Refusé
                             </span>
                           ) : (
-                            <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
+                            <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
                               En attente
                             </span>
                           )}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <div className="flex items-center space-x-2">
+                        <td className="px-3 py-2 whitespace-nowrap">
+                          <div className="flex flex-wrap items-center gap-2">
                             {traitement.observations ? (
-                              // Phase déjà traitée - afficher un badge
-                              <span className="inline-flex px-3 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                              <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-800">
                                 Traité
                               </span>
-                            ) : (
-                              // Phase non traitée - afficher le bouton
+                            ) : isMine ? (
                               <button
+                                type="button"
                                 onClick={() => handleTraiter(traitement)}
-                                className="text-indigo-600 hover:text-indigo-900 font-medium transition-colors duration-200"
+                                className="text-indigo-600 hover:text-indigo-900 font-medium"
                               >
                                 Traiter
                               </button>
+                            ) : (
+                              <span className="text-xs text-gray-400 italic">
+                                Assigné à un autre utilisateur
+                              </span>
                             )}
-                            {/* Bouton Imprimer */}
                             <button
+                              type="button"
                               onClick={() => handleImprimer(traitement)}
-                              className="text-gray-600 hover:text-gray-900 transition-colors duration-200"
-                              title="Imprimer le rapport de la demande"
+                              className="text-gray-600 hover:text-gray-900 p-1"
+                              title="Imprimer"
                             >
                               <PrinterIcon className="h-5 w-5" />
                             </button>
                           </div>
                         </td>
                       </tr>
-                    ))
-                  )}
+                    );
+                  })}
                 </tbody>
               </table>
-            )}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Modal de formulaire avec animations */}
       {showForm && (

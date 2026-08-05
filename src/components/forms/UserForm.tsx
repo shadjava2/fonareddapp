@@ -131,6 +131,23 @@ const UserForm: React.FC<UserFormProps> = ({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Prénom — ordre d'affichage : Prénom NOM POST-NOM */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Prénom
+          <span className="text-gray-400 ml-1">(optionnel)</span>
+        </label>
+        <input
+          type="text"
+          name="prenom"
+          value={formData.prenom || ''}
+          onChange={handleChange}
+          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          placeholder="Entrez le prénom"
+          disabled={loading}
+        />
+      </div>
+
       {/* Nom */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -166,23 +183,6 @@ const UserForm: React.FC<UserFormProps> = ({
           onChange={handleChange}
           className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           placeholder="Entrez le postnom"
-          disabled={loading}
-        />
-      </div>
-
-      {/* Prénom */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Prénom
-          <span className="text-gray-400 ml-1">(optionnel)</span>
-        </label>
-        <input
-          type="text"
-          name="prenom"
-          value={formData.prenom || ''}
-          onChange={handleChange}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          placeholder="Entrez le prénom"
           disabled={loading}
         />
       </div>

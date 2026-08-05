@@ -1,6 +1,7 @@
 import { getTokenFromRequest, getUserFromToken } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { hasAnyPermission, PERMISSIONS } from '@/lib/rbac';
+import { formatPersonDisplayName } from '@/lib/user-display-name';
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 function formatRow(row: any) {
@@ -203,7 +204,7 @@ export default async function handler(
                   });
                   if (superviseur) {
                     formatted.superviseurNom =
-                      `${superviseur.nom || ''} ${superviseur.postnom || ''} ${superviseur.prenom || ''}`.trim() ||
+                      formatPersonDisplayName(superviseur) ||
                       superviseur.username ||
                       null;
                   }

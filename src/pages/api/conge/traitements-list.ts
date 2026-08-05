@@ -1,5 +1,6 @@
 import { getTokenFromRequest, getUserFromToken } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { formatPersonDisplayName } from '@/lib/user-display-name';
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { broadcastToUser } from '../notifications/stream';
 
@@ -368,8 +369,7 @@ export default async function handler(
                 username: user.username,
                 fonction: user.fonction,
                 fullName:
-                  `${user.nom || ''} ${user.postnom || ''} ${user.prenom || ''}`.trim() ||
-                  user.username,
+                  formatPersonDisplayName(user) || user.username,
               };
             } else {
               console.warn(
@@ -388,8 +388,7 @@ export default async function handler(
                 username: user.username,
                 fonction: user.fonction,
                 fullName:
-                  `${user.nom || ''} ${user.postnom || ''} ${user.prenom || ''}`.trim() ||
-                  user.username,
+                  formatPersonDisplayName(user) || user.username,
               };
             }
           }
@@ -435,7 +434,7 @@ export default async function handler(
         }
       }
 
-      const [rows, total] = await Promise.all([
+      const [rowsRaw, totalRaw] = await Promise.all([
         model.findMany({
           where,
           skip,
@@ -444,6 +443,37 @@ export default async function handler(
         }),
         model.count({ where }),
       ]);
+
+      // Exclure les saisies manuelles (congés déjà validés, hors workflow)
+      let rows = rowsRaw;
+      let total = totalRaw;
+      const demandeIds = Array.from(
+        new Set(
+          rowsRaw
+            .map((r: any) => r.fkDemande)
+            .filter((id: unknown) => id != null)
+            .map((id: any) => BigInt(id))
+        )
+      );
+      if (demandeIds.length > 0 && prisma?.congedemande) {
+        const saisieDemandes = await prisma.congedemande.findMany({
+          where: {
+            id: { in: demandeIds },
+            OR: [
+              { section: 'Saisie manuelle' },
+              { section: { startsWith: 'Saisie manuelle' } },
+            ],
+          },
+          select: { id: true },
+        });
+        if (saisieDemandes.length > 0) {
+          const skipIds = new Set(saisieDemandes.map((d) => String(d.id)));
+          rows = rowsRaw.filter(
+            (r: any) => !skipIds.has(String(r.fkDemande))
+          );
+          total = Math.max(0, totalRaw - (rowsRaw.length - rows.length));
+        }
+      }
 
       // Récupérer les informations utilisateur pour chaque traitement
       const userIds = new Set<bigint>();
@@ -508,8 +538,7 @@ export default async function handler(
               username: user.username,
               fonction: user.fonction,
               fullName:
-                `${user.nom || ''} ${user.postnom || ''} ${user.prenom || ''}`.trim() ||
-                user.username,
+                formatPersonDisplayName(user) || user.username,
             };
           }
         }
@@ -524,8 +553,7 @@ export default async function handler(
               username: user.username,
               fonction: user.fonction,
               fullName:
-                `${user.nom || ''} ${user.postnom || ''} ${user.prenom || ''}`.trim() ||
-                user.username,
+                formatPersonDisplayName(user) || user.username,
             };
           }
         }

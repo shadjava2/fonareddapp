@@ -2,6 +2,7 @@ import AutocompleteSelect from '@/components/ui/AutocompleteSelect';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import { apiGet } from '@/lib/fetcher';
+import { formatPersonDisplayName } from '@/lib/user-display-name';
 import React, { useEffect, useState } from 'react';
 
 interface CongeSoldeFormData {
@@ -68,7 +69,7 @@ const CongeSoldeForm: React.FC<CongeSoldeFormProps> = ({
                 value: userId,
                 label:
                   u.label ||
-                  `${u.nom || ''} ${u.prenom || ''}`.trim() ||
+                  formatPersonDisplayName(u) ||
                   u.username ||
                   '',
               };

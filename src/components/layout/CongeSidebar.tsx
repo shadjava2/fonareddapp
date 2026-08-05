@@ -9,10 +9,12 @@ import {
   CalendarDaysIcon,
   ClipboardDocumentCheckIcon,
   CogIcon,
+  DocumentPlusIcon,
   DocumentTextIcon,
   ExclamationTriangleIcon,
   HomeIcon,
   UserGroupIcon,
+  UsersIcon,
 } from '@heroicons/react/24/outline';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -72,6 +74,13 @@ const CongeSidebar: React.FC = React.memo(() => {
       anyOf: [A.CONGE_CONFIG, A.MODULE_ADMIN],
     },
     {
+      name: 'Répertoire personnel',
+      href: '/conge/repertoire-personnel',
+      icon: UsersIcon,
+      current: router.pathname.startsWith('/conge/repertoire-personnel'),
+      anyOf: [A.CONGE_CONFIG, A.CONGE_TRAITEMENT, A.MODULE_CONGE, A.MODULE_ADMIN],
+    },
+    {
       name: 'Congés non justifiés',
       href: '/conge/non-justifie',
       icon: ExclamationTriangleIcon,
@@ -84,6 +93,13 @@ const CongeSidebar: React.FC = React.memo(() => {
       icon: DocumentTextIcon,
       current: router.pathname.startsWith('/conge/demandes-conge'),
       anyOf: [A.CONGE_REQUEST, A.MODULE_ADMIN],
+    },
+    {
+      name: 'Saisie manuelle congé',
+      href: '/conge/saisie-manuelle',
+      icon: DocumentPlusIcon,
+      current: router.pathname.startsWith('/conge/saisie-manuelle'),
+      anyOf: [A.CONGE_REQUEST, A.CONGE_TRAITEMENT, A.MODULE_ADMIN],
     },
     {
       name: 'Traitement Demandes',

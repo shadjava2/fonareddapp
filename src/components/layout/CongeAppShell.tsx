@@ -8,6 +8,7 @@ import { useRouter } from 'next/router';
 import React, { useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { cn } from '../../lib/utils';
+import { formatPersonDisplayName } from '@/lib/user-display-name';
 import CongeSidebar from './CongeSidebar';
 
 interface CongeAppShellProps {
@@ -31,6 +32,23 @@ const CongeAppShell: React.FC<CongeAppShellProps> = ({ children }) => {
     {
       prefix: '/conge/config-conge',
       anyOf: [PERMISSIONS.CONGE_CONFIG, PERMISSIONS.MODULE_ADMIN],
+    },
+    {
+      prefix: '/conge/repertoire-personnel',
+      anyOf: [
+        PERMISSIONS.CONGE_CONFIG,
+        PERMISSIONS.CONGE_TRAITEMENT,
+        PERMISSIONS.MODULE_CONGE,
+        PERMISSIONS.MODULE_ADMIN,
+      ],
+    },
+    {
+      prefix: '/conge/saisie-manuelle',
+      anyOf: [
+        PERMISSIONS.CONGE_REQUEST,
+        PERMISSIONS.CONGE_TRAITEMENT,
+        PERMISSIONS.MODULE_ADMIN,
+      ],
     },
     {
       prefix: '/conge/non-justifie',
@@ -67,18 +85,10 @@ const CongeAppShell: React.FC<CongeAppShellProps> = ({ children }) => {
     ? hasAnyPermission(profile, matchedRoute.anyOf)
     : canConge;
 
-  // Récupérer le nom complet de l'utilisateur
+  // Récupérer le nom complet de l'utilisateur (Prénom NOM POST-NOM)
   const getUserDisplayName = () => {
-    if (user?.nom && user?.prenom) {
-      return `${user.prenom} ${user.nom}`;
-    } else if (user?.nom) {
-      return user.nom;
-    } else if (user?.prenom) {
-      return user.prenom;
-    } else if (user?.username) {
-      return user.username;
-    }
-    return 'Utilisateur';
+    if (!user) return 'Utilisateur';
+    return formatPersonDisplayName(user) || user.username || 'Utilisateur';
   };
 
   if (loading) {

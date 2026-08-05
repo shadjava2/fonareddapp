@@ -5,10 +5,12 @@ import {
   CalendarDaysIcon,
   ClipboardDocumentCheckIcon,
   CogIcon,
+  DocumentPlusIcon,
   DocumentTextIcon,
   ExclamationTriangleIcon,
   HomeIcon,
   UserGroupIcon,
+  UsersIcon,
 } from '@heroicons/react/24/outline';
 import { formatDecimalFR } from '@/lib/formatDate';
 import { apiGet } from '@/lib/fetcher';
@@ -65,6 +67,21 @@ const CongePage: React.FC = () => {
       anyOf: [PERMISSIONS.CONGE_CONFIG, PERMISSIONS.MODULE_ADMIN],
     },
     {
+      title: 'Répertoire personnel',
+      description:
+        'Soldes de tous les agents et correction rapide des points',
+      icon: UsersIcon,
+      href: '/conge/repertoire-personnel',
+      color: 'bg-teal-500',
+      hoverColor: 'hover:bg-teal-600',
+      anyOf: [
+        PERMISSIONS.CONGE_CONFIG,
+        PERMISSIONS.CONGE_TRAITEMENT,
+        PERMISSIONS.MODULE_CONGE,
+        PERMISSIONS.MODULE_ADMIN,
+      ],
+    },
+    {
       title: 'Congés non justifiés',
       description:
         'Retraits sur le solde annuel et historique (impression du rapport)',
@@ -83,6 +100,20 @@ const CongePage: React.FC = () => {
       hoverColor: 'hover:bg-purple-600',
       anyOf: [
         PERMISSIONS.CONGE_REQUEST,
+        PERMISSIONS.MODULE_ADMIN,
+      ],
+    },
+    {
+      title: 'Saisie manuelle congé',
+      description:
+        'Enregistrer des congés déjà pris (hors workflow) pour les rapports',
+      icon: DocumentPlusIcon,
+      href: '/conge/saisie-manuelle',
+      color: 'bg-violet-500',
+      hoverColor: 'hover:bg-violet-600',
+      anyOf: [
+        PERMISSIONS.CONGE_REQUEST,
+        PERMISSIONS.CONGE_TRAITEMENT,
         PERMISSIONS.MODULE_ADMIN,
       ],
     },

@@ -78,7 +78,102 @@ const HomePage: React.FC = () => {
           </div>
         </div>
 
-        {/* Historique de connexion (sécurité compte) — en tête du contenu */}
+        {/* Cartes d’accès rapide en premier */}
+        <ModuleGrid user={user} />
+
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="bg-white overflow-hidden shadow rounded-lg">
+            <div className="p-5">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="w-8 h-8 bg-primary-500 rounded-md flex items-center justify-center">
+                    <span className="text-white text-sm font-bold">U</span>
+                  </div>
+                </div>
+                <div className="ml-5 w-0 flex-1">
+                  <dl>
+                    <dt className="text-sm font-medium text-gray-500 truncate">
+                      Utilisateur
+                    </dt>
+                    <dd className="text-lg font-medium text-gray-900">
+                      {user?.username || 'N/A'}
+                    </dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white overflow-hidden shadow rounded-lg">
+            <div className="p-5">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="w-8 h-8 bg-blue-500 rounded-md flex items-center justify-center">
+                    <span className="text-white text-sm font-bold">R</span>
+                  </div>
+                </div>
+                <div className="ml-5 w-0 flex-1">
+                  <dl>
+                    <dt className="text-sm font-medium text-gray-500 truncate">
+                      Rôle
+                    </dt>
+                    <dd className="text-lg font-medium text-gray-900 truncate" title={user?.roleNom || undefined}>
+                      {user?.roleNom?.trim()
+                        ? user.roleNom
+                        : 'Sans rôle assigné'}
+                    </dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white overflow-hidden shadow rounded-lg">
+            <div className="p-5">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="w-8 h-8 bg-green-500 rounded-md flex items-center justify-center">
+                    <span className="text-white text-sm font-bold">P</span>
+                  </div>
+                </div>
+                <div className="ml-5 w-0 flex-1">
+                  <dl>
+                    <dt className="text-sm font-medium text-gray-500 truncate">
+                      Permissions
+                    </dt>
+                    <dd className="text-lg font-medium text-gray-900">
+                      {(user?.permissions || []).length}
+                    </dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white overflow-hidden shadow rounded-lg">
+            <div className="p-5">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <div className="w-8 h-8 bg-yellow-500 rounded-md flex items-center justify-center">
+                    <span className="text-white text-sm font-bold">S</span>
+                  </div>
+                </div>
+                <div className="ml-5 w-0 flex-1">
+                  <dl>
+                    <dt className="text-sm font-medium text-gray-500 truncate">
+                      Services
+                    </dt>
+                    <dd className="text-lg font-medium text-gray-900">
+                      {(user?.services || []).length}
+                    </dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Historique de connexion en bas — ne bloque pas l’accès aux modules */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div>
@@ -179,102 +274,6 @@ const HomePage: React.FC = () => {
               reconnaissez pas une connexion, changez immédiatement votre mot de
               passe et signalez-le à votre administrateur.
             </p>
-          </div>
-        </div>
-
-        {/* Grille des modules */}
-        <ModuleGrid user={user} />
-
-        {/* Informations rapides */}
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="p-5">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className="w-8 h-8 bg-primary-500 rounded-md flex items-center justify-center">
-                    <span className="text-white text-sm font-bold">U</span>
-                  </div>
-                </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      Utilisateur
-                    </dt>
-                    <dd className="text-lg font-medium text-gray-900">
-                      {user?.username || 'N/A'}
-                    </dd>
-                  </dl>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="p-5">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className="w-8 h-8 bg-blue-500 rounded-md flex items-center justify-center">
-                    <span className="text-white text-sm font-bold">R</span>
-                  </div>
-                </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      Rôle
-                    </dt>
-                    <dd className="text-lg font-medium text-gray-900 truncate" title={user?.roleNom || undefined}>
-                      {user?.roleNom?.trim()
-                        ? user.roleNom
-                        : 'Sans rôle assigné'}
-                    </dd>
-                  </dl>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="p-5">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className="w-8 h-8 bg-green-500 rounded-md flex items-center justify-center">
-                    <span className="text-white text-sm font-bold">P</span>
-                  </div>
-                </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      Permissions
-                    </dt>
-                    <dd className="text-lg font-medium text-gray-900">
-                      {(user?.permissions || []).length}
-                    </dd>
-                  </dl>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="p-5">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className="w-8 h-8 bg-yellow-500 rounded-md flex items-center justify-center">
-                    <span className="text-white text-sm font-bold">S</span>
-                  </div>
-                </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      Services
-                    </dt>
-                    <dd className="text-lg font-medium text-gray-900">
-                      {(user?.services || []).length}
-                    </dd>
-                  </dl>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </div>

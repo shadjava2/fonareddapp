@@ -1,6 +1,7 @@
 import { requireApiPermissions } from '@/lib/api-auth';
 import { prisma } from '@/lib/prisma';
 import { API_ADMIN } from '@/lib/rbac';
+import { formatPersonDisplayName } from '@/lib/user-display-name';
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 type Data = {
@@ -80,7 +81,7 @@ export default async function handler(
     });
 
     const displayName =
-      [user.nom, user.prenom].filter(Boolean).join(' ').trim() || user.username;
+      formatPersonDisplayName(user) || user.username;
 
     return res.status(200).json({
       success: true,
