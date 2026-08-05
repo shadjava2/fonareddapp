@@ -21,9 +21,12 @@ RUN npx prisma generate
 RUN npm run build
 
 # Next standalone : static + public à côté de server.js
+# (si standalone/public existe déjà, `cp -r public dest` crée dest/public — d’où le test JPG en échec)
 RUN mkdir -p .next/standalone/.next \
-  && cp -r .next/static .next/standalone/.next/static \
-  && cp -r public .next/standalone/public \
+  && rm -rf .next/standalone/public \
+  && cp -a public/. .next/standalone/public/ \
+  && cp -a .next/static/. .next/standalone/.next/static/ \
+  && ls -la .next/standalone/public/ \
   && test -f .next/standalone/public/login-forest.jpg \
   && test -f .next/standalone/public/logo.png
 
