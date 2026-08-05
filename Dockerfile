@@ -27,7 +27,7 @@ RUN mkdir -p .next/standalone/.next \
   && cp -a public/. .next/standalone/public/ \
   && cp -a .next/static/. .next/standalone/.next/static/ \
   && ls -la .next/standalone/public/ \
-  && test -f .next/standalone/public/login-forest.jpg \
+  && test -f .next/standalone/public/forest-bg.jpg \
   && test -f .next/standalone/public/logo.png
 
 RUN groupadd --system --gid 1001 nodejs \

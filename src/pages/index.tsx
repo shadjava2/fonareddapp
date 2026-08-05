@@ -294,7 +294,7 @@ const IndexPage: React.FC = () => {
           backgroundColor: '#0c1f14',
           backgroundImage: [
             'linear-gradient(to bottom, rgba(0,0,0,.50), rgba(8,40,24,.35), rgba(0,0,0,.70))',
-            "url('/login-forest.jpg')",
+            "url('/forest-bg.jpg')",
             'radial-gradient(ellipse at 20% 0%, rgba(34,197,94,.18), transparent 55%)',
             'radial-gradient(ellipse at 80% 100%, rgba(6,78,59,.45), transparent 50%)',
             'linear-gradient(160deg, #0c1f14 0%, #14532d 45%, #052e16 100%)',

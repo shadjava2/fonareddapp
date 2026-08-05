@@ -15,8 +15,8 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // rediriger /login vers / (pour compatibilité)
-  if (pathname.startsWith('/login')) {
+  // rediriger /login vers / (pour compatibilité) — ne pas matcher login-*.jpg etc.
+  if (pathname === '/login' || pathname.startsWith('/login/')) {
     const url = req.nextUrl.clone();
     url.pathname = '/';
     return NextResponse.redirect(url);
@@ -34,5 +34,7 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next|static|favicon.ico).*)'],
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|map|txt|xml|woff2?)$).*)',
+  ],
 };
