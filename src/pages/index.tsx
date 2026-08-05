@@ -283,29 +283,58 @@ const IndexPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 via-green-100 to-emerald-200 flex items-center justify-center px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
+    <div className="relative min-h-screen flex items-center justify-center px-4 sm:px-6 lg:px-8 overflow-hidden">
+      {/* Fond forêt : flou LQIP immédiat puis WebP (~300 Ko) */}
+      <div
+        aria-hidden
+        className="absolute inset-0 -z-10 bg-[#0f2918]"
+        style={{
+          backgroundImage: "url('/login-forest-blur.jpg')",
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+        }}
+      />
+      <Image
+        src="/login-forest.webp"
+        alt=""
+        fill
+        priority
+        sizes="100vw"
+        className="object-cover -z-10"
+        quality={70}
+      />
+      <div
+        aria-hidden
+        className="absolute inset-0 -z-10 bg-gradient-to-b from-black/55 via-emerald-950/50 to-black/70"
+      />
+
+      <div className="max-w-md w-full space-y-6 relative z-10">
         {/* Logo et titre */}
         <div className="text-center">
-          <div className="mx-auto flex items-center justify-center mb-4">
+          <div className="mx-auto flex items-center justify-center mb-4 rounded-xl bg-white/90 px-4 py-2 shadow-lg backdrop-blur-sm">
             <Image
               src="/logo.png"
-              alt="Fond National REDD"
+              alt="Fonds National REDD"
               width={200}
               height={80}
               className="object-contain"
               priority
             />
           </div>
-          <h2 className="mt-6 text-3xl font-bold text-gray-900">Connexion</h2>
-          <p className="mt-2 text-sm text-gray-600">
+          <h2 className="mt-4 text-3xl font-bold text-white drop-shadow-md">
+            Connexion
+          </h2>
+          <p className="mt-2 text-sm text-emerald-50/90 drop-shadow">
             Accédez à votre espace Fonaredd
+          </p>
+          <p className="mt-2 inline-flex items-center rounded-full bg-emerald-900/50 px-3 py-1 text-[11px] font-medium tracking-wide text-emerald-100 ring-1 ring-emerald-400/40 backdrop-blur-sm">
+            Forêt REDD · mise à jour août 2026
           </p>
         </div>
 
         {/* Message d'erreur général */}
         {errors.general && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+          <div className="bg-red-50/95 border border-red-200 rounded-lg p-4 mb-4 shadow-lg backdrop-blur-sm">
             <div className="flex items-center">
               <svg
                 className="h-5 w-5 text-red-400 mr-3"
@@ -331,7 +360,7 @@ const IndexPage: React.FC = () => {
         )}
 
         {/* Formulaire de connexion */}
-        <div className="bg-white py-8 px-6 shadow-xl rounded-2xl border border-green-200">
+        <div className="bg-white/95 py-8 px-6 shadow-2xl rounded-2xl border border-white/40 backdrop-blur-md">
           <form className="space-y-6" onSubmit={handleSubmit}>
             {/* Champ nom d'utilisateur */}
             <div>
@@ -851,7 +880,7 @@ const IndexPage: React.FC = () => {
 
         {/* Signature */}
         <div className="text-center">
-          <div className="bg-white/80 backdrop-blur-sm rounded-lg px-6 py-4 shadow-lg border border-green-200">
+          <div className="rounded-lg bg-white/90 px-6 py-4 shadow-lg border border-white/50 backdrop-blur-sm">
             <p className="text-sm text-gray-600">
               <span className="font-medium text-green-700">Développé par</span>
             </p>
@@ -868,10 +897,10 @@ const IndexPage: React.FC = () => {
 
         {/* Informations de sécurité */}
         <div className="text-center">
-          <div className="flex items-center justify-center space-x-4 text-xs text-gray-500">
+          <div className="flex items-center justify-center space-x-4 text-xs text-emerald-50/90 drop-shadow">
             <div className="flex items-center">
               <svg
-                className="h-4 w-4 text-green-500 mr-1"
+                className="h-4 w-4 text-emerald-300 mr-1"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -887,7 +916,7 @@ const IndexPage: React.FC = () => {
             </div>
             <div className="flex items-center">
               <svg
-                className="h-4 w-4 text-green-500 mr-1"
+                className="h-4 w-4 text-emerald-300 mr-1"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
