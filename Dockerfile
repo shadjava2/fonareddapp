@@ -20,10 +20,12 @@ ENV DATABASE_URL=${DATABASE_URL}
 RUN npx prisma generate
 RUN npm run build
 
-# Next standalone n’embarque pas toujours static/public au bon endroit
+# Next standalone : static + public à côté de server.js
 RUN mkdir -p .next/standalone/.next \
   && cp -r .next/static .next/standalone/.next/static \
-  && cp -r public .next/standalone/public
+  && cp -r public .next/standalone/public \
+  && test -f .next/standalone/public/login-forest.jpg \
+  && test -f .next/standalone/public/logo.png
 
 RUN groupadd --system --gid 1001 nodejs \
   && useradd --system --uid 1001 --gid nodejs nextjs \
@@ -38,6 +40,6 @@ ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 ENV DOCKER_BUILD=true
 
-# Garder cwd=/app pour prisma migrate (deploy) + public à /app/public
-WORKDIR /app
-CMD ["node", ".next/standalone/server.js"]
+# cwd = dossier de server.js → /public est bien servi
+WORKDIR /app/.next/standalone
+CMD ["node", "server.js"]

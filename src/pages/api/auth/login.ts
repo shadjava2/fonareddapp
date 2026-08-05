@@ -122,7 +122,9 @@ export default async function handler(
     return res.status(500).json({
       success: false,
       message:
-        "Une erreur technique s'est produite. Veuillez contacter l'administrateur.",
+        error instanceof Error && error.message
+          ? error.message
+          : "Une erreur technique s'est produite. Veuillez contacter l'administrateur.",
     });
   }
 }

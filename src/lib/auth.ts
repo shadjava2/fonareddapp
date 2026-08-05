@@ -160,6 +160,11 @@ export async function authenticateUser(
   username: string,
   password: string
 ): Promise<UserProfile | null> {
+  if (!prisma) {
+    throw new Error(
+      'Base de données non configurée (DATABASE_URL manquant dans le conteneur).'
+    );
+  }
   const user = await prisma.utilisateurs.findFirst({
     where: { username },
     include: prismaUserAccessInclude,

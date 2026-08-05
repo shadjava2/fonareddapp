@@ -125,7 +125,9 @@ const IndexPage: React.FC = () => {
       } else if (error.response?.status === 429) {
         errorMessage = 'Trop de tentatives de connexion. Veuillez patienter.';
       } else if (error.response?.status >= 500) {
-        errorMessage = 'Erreur du serveur. Veuillez réessayer plus tard.';
+        errorMessage =
+          error.response?.data?.message ||
+          'Erreur du serveur. Veuillez réessayer plus tard.';
       } else if (!navigator.onLine) {
         errorMessage = 'Aucune connexion internet. Vérifiez votre connexion.';
       }
@@ -284,14 +286,20 @@ const IndexPage: React.FC = () => {
 
   return (
     <div className="relative min-h-screen flex items-center justify-center px-4 sm:px-6 lg:px-8 overflow-hidden">
-      {/* Fond forêt en CSS (JPEG servi depuis /public — robuste en Docker standalone) */}
+      {/* Fond : photo forêt + filet CSS (si le JPG 404, l’ambiance reste lisible) */}
       <div
         aria-hidden
-        className="absolute inset-0 -z-10 bg-[#0f2918]"
+        className="absolute inset-0 -z-10"
         style={{
-          backgroundImage:
-            "linear-gradient(to bottom, rgba(0,0,0,.55), rgba(6,46,28,.42), rgba(0,0,0,.72)), url('/login-forest.jpg')",
-          backgroundSize: 'cover',
+          backgroundColor: '#0c1f14',
+          backgroundImage: [
+            'linear-gradient(to bottom, rgba(0,0,0,.50), rgba(8,40,24,.35), rgba(0,0,0,.70))',
+            "url('/login-forest.jpg')",
+            'radial-gradient(ellipse at 20% 0%, rgba(34,197,94,.18), transparent 55%)',
+            'radial-gradient(ellipse at 80% 100%, rgba(6,78,59,.45), transparent 50%)',
+            'linear-gradient(160deg, #0c1f14 0%, #14532d 45%, #052e16 100%)',
+          ].join(', '),
+          backgroundSize: 'cover, cover, cover, cover, cover',
           backgroundPosition: 'center',
           backgroundRepeat: 'no-repeat',
         }}
