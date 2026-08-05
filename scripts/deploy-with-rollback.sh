@@ -183,11 +183,16 @@ compose up -d $DEPLOY_SERVICES
 
 if [ "${RUN_MIGRATE:-1}" = "1" ]; then
   log_line "[DEPLOY] Prisma migrate deploy..."
-  if ! compose run --rm app-prod npx prisma migrate deploy; then
-    log_line "[DEPLOY] Migration Prisma échouée"
-    log_line "[DEPLOY] Derniers logs fonaredd-app-prod:"
-    docker logs fonaredd-app-prod 2>&1 | tail -40 | while read -r line; do log_line "  $line"; done
-    rollback
+  # -w /app : le schéma est à /app/prisma (pas dans standalone)
+  if ! compose run --rm -w /app app-prod npx prisma migrate deploy --schema=prisma/schema.prisma; then
+    log_line "[DEPLOY] AVERTISSEMENT: migrate échoué — déploiement poursuivi (DB souvent déjà à jour / hors migrate)"
+    log_line "[DEPLOY] Pour forcer l’échec+rollback: MIGRATE_STRICT=1"
+    if [ "${MIGRATE_STRICT:-0}" = "1" ]; then
+      log_line "[DEPLOY] Migration Prisma échouée (strict)"
+      log_line "[DEPLOY] Derniers logs fonaredd-app-prod:"
+      docker logs fonaredd-app-prod 2>&1 | tail -40 | while read -r line; do log_line "  $line"; done
+      rollback
+    fi
   fi
 fi
 

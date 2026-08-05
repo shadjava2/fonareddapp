@@ -38,6 +38,6 @@ ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 ENV DOCKER_BUILD=true
 
-# Servir public/ depuis le dossier standalone (cwd = server.js)
-WORKDIR /app/.next/standalone
-CMD ["node", "server.js"]
+# Garder cwd=/app pour prisma migrate (deploy) + public à /app/public
+WORKDIR /app
+CMD ["node", ".next/standalone/server.js"]
