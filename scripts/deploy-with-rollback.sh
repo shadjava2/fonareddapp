@@ -181,19 +181,21 @@ done
 log_line "[DEPLOY] Démarrage stack: $DEPLOY_SERVICES"
 compose up -d $DEPLOY_SERVICES
 
-if [ "${RUN_MIGRATE:-1}" = "1" ]; then
+# Migrate désactivé par défaut (schéma souvent géré hors migrate / migrations absentes du dépôt).
+# Activer avec RUN_MIGRATE=1. Rollback seulement si MIGRATE_STRICT=1.
+if [ "${RUN_MIGRATE:-0}" = "1" ]; then
   log_line "[DEPLOY] Prisma migrate deploy..."
-  # -w /app : le schéma est à /app/prisma (pas dans standalone)
-  if ! compose run --rm -w /app app-prod npx prisma migrate deploy --schema=prisma/schema.prisma; then
-    log_line "[DEPLOY] AVERTISSEMENT: migrate échoué — déploiement poursuivi (DB souvent déjà à jour / hors migrate)"
-    log_line "[DEPLOY] Pour forcer l’échec+rollback: MIGRATE_STRICT=1"
+  if ! compose run --rm --workdir /app app-prod \
+    npx prisma migrate deploy --schema=/app/prisma/schema.prisma; then
+    log_line "[DEPLOY] AVERTISSEMENT: migrate échoué — déploiement poursuivi"
     if [ "${MIGRATE_STRICT:-0}" = "1" ]; then
-      log_line "[DEPLOY] Migration Prisma échouée (strict)"
-      log_line "[DEPLOY] Derniers logs fonaredd-app-prod:"
+      log_line "[DEPLOY] Migration Prisma échouée (strict) → rollback"
       docker logs fonaredd-app-prod 2>&1 | tail -40 | while read -r line; do log_line "  $line"; done
       rollback
     fi
   fi
+else
+  log_line "[DEPLOY] Prisma migrate ignoré (RUN_MIGRATE=0). Activer: RUN_MIGRATE=1"
 fi
 
 log_line "[DEPLOY] Health check: $APP_HEALTH_URL"
