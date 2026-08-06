@@ -21,6 +21,8 @@ export type AttendanceReportRow = {
   eventType?: string;
   /** Valeur brute Hikvision / lecteur (`entryDirection` ou `doorAction` à l’import) */
   direction?: string | null;
+  /** Pointage saisi manuellement (hors lecteur) */
+  isManual?: boolean;
 };
 
 export type AttendanceSortField =
@@ -208,6 +210,9 @@ export async function fetchAttendanceReportRows(params: {
     const customLabel =
       event.custom_status?.trim() || customLabels[c.flow];
 
+    const source = String(event.source || event.data_source || '').toLowerCase();
+    const isManual = source === 'manual' || event.device_ip === 'manual';
+
     return {
       id: event.id.toString(),
       personId: event.employee_no || 'N/A',
@@ -219,12 +224,14 @@ export async function fetchAttendanceReportRows(params: {
       department: idn?.department || 'fonaredd',
       time: event.event_time.toISOString(),
       attendanceStatus,
-      attendanceCheckPoint:
-        event.checkpoint?.trim() ||
-        `${event.device_ip}${event.door_no ? `_Door${event.door_no}` : ''}`,
+      attendanceCheckPoint: isManual
+        ? 'Saisie manuelle'
+        : event.checkpoint?.trim() ||
+          `${event.device_ip}${event.door_no ? `_Door${event.door_no}` : ''}`,
       custom: customLabel,
       eventType: eff.event_type,
       direction: eff.direction ?? event.direction,
+      isManual,
     };
   });
 

@@ -38,6 +38,7 @@ export default async function handler(
               id: true,
               nom: true,
               prenom: true,
+              postnom: true,
               username: true,
             },
           },
@@ -62,14 +63,34 @@ export default async function handler(
 
       console.log('🔍 Droits services trouvés:', droitsServices.length);
 
+      // BigInt → string : sinon res.json() échoue dès qu'il y a des liaisons
       const mappedDroitsServices = droitsServices.map((droit) => ({
         id: droit.id.toString(),
-        fkUtilisateur: droit.fkUtilisateur?.toString(),
-        fkService: droit.fkService?.toString(),
-        utilisateur: droit.utilisateur,
-        service: droit.service,
+        fkUtilisateur: droit.fkUtilisateur?.toString() ?? null,
+        fkService: droit.fkService?.toString() ?? null,
+        utilisateur: droit.utilisateur
+          ? {
+              id: droit.utilisateur.id.toString(),
+              nom: droit.utilisateur.nom,
+              prenom: droit.utilisateur.prenom,
+              postnom: droit.utilisateur.postnom,
+              username: droit.utilisateur.username,
+            }
+          : null,
+        service: droit.service
+          ? {
+              id: droit.service.id.toString(),
+              designation: droit.service.designation,
+              site: droit.service.site
+                ? {
+                    id: droit.service.site.id.toString(),
+                    designation: droit.service.site.designation,
+                  }
+                : null,
+            }
+          : null,
         datecreate: droit.datecreate.toISOString(),
-        usercreateid: droit.usercreateid?.toString(),
+        usercreateid: droit.usercreateid?.toString() ?? null,
       }));
 
       console.log('🔍 Droits services mappés:', mappedDroitsServices.length);
@@ -187,7 +208,7 @@ export default async function handler(
         data: {
           fkUtilisateur: BigInt(fkUtilisateur),
           fkService: BigInt(fkService),
-          usercreateid: BigInt(1), // Utilisateur fictif pour le développement
+          usercreateid: BigInt(authUser.id),
         },
         include: {
           utilisateur: {
@@ -195,6 +216,7 @@ export default async function handler(
               id: true,
               nom: true,
               prenom: true,
+              postnom: true,
               username: true,
             },
           },
@@ -220,10 +242,29 @@ export default async function handler(
         message: 'Droit service créé avec succès',
         droitsService: {
           id: newDroit.id.toString(),
-          fkUtilisateur: newDroit.fkUtilisateur?.toString(),
-          fkService: newDroit.fkService?.toString(),
-          utilisateur: newDroit.utilisateur,
-          service: newDroit.service,
+          fkUtilisateur: newDroit.fkUtilisateur?.toString() ?? null,
+          fkService: newDroit.fkService?.toString() ?? null,
+          utilisateur: newDroit.utilisateur
+            ? {
+                id: newDroit.utilisateur.id.toString(),
+                nom: newDroit.utilisateur.nom,
+                prenom: newDroit.utilisateur.prenom,
+                postnom: newDroit.utilisateur.postnom,
+                username: newDroit.utilisateur.username,
+              }
+            : null,
+          service: newDroit.service
+            ? {
+                id: newDroit.service.id.toString(),
+                designation: newDroit.service.designation,
+                site: newDroit.service.site
+                  ? {
+                      id: newDroit.service.site.id.toString(),
+                      designation: newDroit.service.site.designation,
+                    }
+                  : null,
+              }
+            : null,
           datecreate: newDroit.datecreate.toISOString(),
         },
       });

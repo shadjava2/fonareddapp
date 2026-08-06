@@ -151,8 +151,13 @@ export function AttendancePdfDocument({
                   minute: '2-digit',
                 })}
               </Text>
-              <Text style={[styles.td, styles.cellStat]}>{r.attendanceStatus}</Text>
-              <Text style={[styles.td, styles.cellCp]}>{r.attendanceCheckPoint}</Text>
+              <Text style={[styles.td, styles.cellStat]}>
+                {r.attendanceStatus}
+                {r.isManual ? ' (manuel)' : ''}
+              </Text>
+              <Text style={[styles.td, styles.cellCp]}>
+                {r.isManual ? 'Saisie manuelle' : r.attendanceCheckPoint}
+              </Text>
               <Text style={[styles.td, styles.cellCustom]}>{r.custom}</Text>
             </View>
           ))}

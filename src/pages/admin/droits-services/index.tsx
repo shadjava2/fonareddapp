@@ -91,7 +91,11 @@ const DroitsServicesPage: React.FC = () => {
 
       if (response.success && response.droitsServices) {
         setDroitsServices(response.droitsServices);
-        setStats((s) => ({ ...s, total: response.droitsServices.length }));
+        const total =
+          typeof response.pagination?.total === 'number'
+            ? response.pagination.total
+            : response.total ?? response.droitsServices.length;
+        setStats((s) => ({ ...s, total }));
       } else {
         setDroitsServices([]);
         setStats((s) => ({ ...s, total: 0 }));

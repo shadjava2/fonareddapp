@@ -71,7 +71,6 @@ export default async function handler(
         data: {
           fkUtilisateur: BigInt(fkUtilisateur),
           fkService: BigInt(fkService),
-          userupdateid: BigInt(1), // Utilisateur fictif pour le développement
         },
         include: {
           utilisateur: {
@@ -79,6 +78,7 @@ export default async function handler(
               id: true,
               nom: true,
               prenom: true,
+              postnom: true,
               username: true,
             },
           },
@@ -111,6 +111,7 @@ export default async function handler(
                 id: updatedDroit.utilisateur.id.toString(),
                 nom: updatedDroit.utilisateur.nom,
                 prenom: updatedDroit.utilisateur.prenom,
+                postnom: updatedDroit.utilisateur.postnom,
                 username: updatedDroit.utilisateur.username,
               }
             : null,

@@ -73,7 +73,7 @@ export default async function handler(
           data: userIds.map((fkUtilisateur) => ({
             fkUtilisateur,
             fkService: serviceId,
-            usercreateid: BigInt(1),
+            usercreateid: BigInt(authUser.id),
           })),
         });
       }

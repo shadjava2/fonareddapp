@@ -24,6 +24,7 @@ interface AttendanceRecord {
   custom: string;
   eventType?: string;
   direction?: string | null;
+  isManual?: boolean;
 }
 
 type PdfLoadingState = 'collective' | 'individual' | null;
@@ -791,12 +792,19 @@ const ReportsPage: React.FC = () => {
                         >
                           {record.attendanceStatus}
                         </span>
+                        {record.isManual && (
+                          <div className="mt-1 text-xs font-medium text-indigo-600">
+                            Saisie manuelle
+                          </div>
+                        )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono">
                         {record.direction?.trim() ? record.direction : '—'}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate">
-                        {record.attendanceCheckPoint}
+                        {record.isManual
+                          ? 'Saisie manuelle'
+                          : record.attendanceCheckPoint}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {record.custom}
