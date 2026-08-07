@@ -362,7 +362,8 @@ const TraitementDemandesPage: React.FC = () => {
 
   const handleTraiter = useCallback(
     async (traitement: Traitement) => {
-      setDetailDemandeRow(null);
+      setDetailAgentRow(null);
+      setExpandedDemandeId(null);
       startActionLoader(
         'Chargement du formulaire...',
         'Vérification des prérequis'
@@ -388,32 +389,29 @@ const TraitementDemandesPage: React.FC = () => {
           const remplacement = allTraitements.find(
             (t) => Number.parseInt(String(t.fkPhase), 10) === 1
           );
-          const remplacementValide =
-            !!remplacement?.observations && remplacement?.approbation === true;
+          // Si aucune phase 1 en base, ne pas bloquer (parcours allégé)
+          if (remplacement) {
+            const remplacementValide =
+              !!remplacement?.observations && remplacement?.approbation === true;
 
-          if (!remplacementValide) {
-            stopActionLoader();
-            showError(
-              'Validation du remplaçant requise',
-              "Le remplaçant doit d'abord valider la demande avant de pouvoir traiter cette phase."
-            );
-            return;
+            if (!remplacementValide) {
+              stopActionLoader();
+              showError(
+                'Validation du remplaçant requise',
+                "Le remplaçant doit d'abord valider la demande avant de pouvoir traiter cette phase."
+              );
+              return;
+            }
           }
         }
 
-        // Petit délai pour afficher le loader avant d'ouvrir le formulaire
-        setTimeout(() => {
-          setEditingTraitement(traitement);
-          setShowForm(true);
-          stopActionLoader();
-        }, 150);
+        setEditingTraitement(traitement);
+        setShowForm(true);
+        stopActionLoader();
       } catch {
-        // En cas d'erreur de vérification, laisser la validation métier serveur faire foi.
-        setTimeout(() => {
-          setEditingTraitement(traitement);
-          setShowForm(true);
-          stopActionLoader();
-        }, 150);
+        setEditingTraitement(traitement);
+        setShowForm(true);
+        stopActionLoader();
       }
     },
     [showError, startActionLoader, stopActionLoader]
@@ -1576,10 +1574,15 @@ const TraitementDemandesPage: React.FC = () => {
                               {fichiersDemande.map((f) => (
                                 <li key={f.id}>
                                   <a
-                                    href={f.url}
+                                    href={
+                                      f.url?.includes('download=1')
+                                        ? f.url
+                                        : `/api/conge/demande-fichiers?id=${f.id}&download=1`
+                                    }
                                     target="_blank"
                                     rel="noreferrer"
                                     className="text-indigo-600 hover:underline"
+                                    onClick={(e) => e.stopPropagation()}
                                   >
                                     {f.nom_original}
                                   </a>
@@ -1670,9 +1673,11 @@ const TraitementDemandesPage: React.FC = () => {
                                         >
                                           <button
                                             type="button"
-                                            onClick={() =>
-                                              handleTraiter(traitement)
-                                            }
+                                            onClick={(e) => {
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                              void handleTraiter(traitement);
+                                            }}
                                             className="text-indigo-600 hover:text-indigo-900 font-medium"
                                           >
                                             Traiter
@@ -1712,7 +1717,7 @@ const TraitementDemandesPage: React.FC = () => {
 
       {/* Modal de formulaire avec animations */}
       {showForm && (
-        <div className="fixed inset-0 z-40 overflow-y-auto bg-gray-600 bg-opacity-50 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+        <div className="fixed inset-0 z-[60] overflow-y-auto bg-gray-600 bg-opacity-50 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-white rounded-lg shadow-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto transform transition-all duration-300 animate-scale-in relative">
             {/* Indicateur de chargement en haut du modal */}
             {isSubmitting && (

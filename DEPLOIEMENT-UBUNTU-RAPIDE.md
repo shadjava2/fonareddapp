@@ -60,10 +60,12 @@ sudo mysqladmin flush-hosts
 Appliquer manuellement si un déploiement introduit un fichier sous `docs/sql/` (ex. superviseur principal, pièces jointes) :
 
 ```bash
-# Exemple — adapter user/base
-sudo mysql NOM_BASE < docs/sql/conge-superviseur-principal.sql
-sudo mysql NOM_BASE < docs/sql/conge-demande-fichiers.sql
-sudo mysql NOM_BASE < docs/sql/conge-rbac-align-admin.sql
+cd /opt/fonaredd
+# Nom de base = segment après le dernier / dans DATABASE_URL (ex. fonaredd-app).
+# Utiliser des GUILLEMETS SIMPLES — pas de backticks (sinon bash exécute le nom comme commande).
+sudo mysql 'fonaredd-app' < docs/sql/conge-superviseur-principal.sql
+sudo mysql 'fonaredd-app' < docs/sql/conge-demande-fichiers.sql
+sudo mysql 'fonaredd-app' < docs/sql/conge-rbac-align-admin.sql
 ```
 
 Règle : **additive only** (`CREATE TABLE IF NOT EXISTS`, `ALTER ... ADD COLUMN` nullable). Jamais de `DROP` / truncate métier.

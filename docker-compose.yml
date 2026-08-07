@@ -72,6 +72,8 @@ services:
       - EMAIL_SERVER_PASSWORD=${EMAIL_SERVER_PASSWORD}
       - EMAIL_FROM=${EMAIL_FROM}
       - PASSWORD_RESET_OTP_SECRET=${PASSWORD_RESET_OTP_SECRET:-}
+    volumes:
+      - fonaredd_uploads:/app/.next/standalone/public/uploads
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -109,6 +111,7 @@ volumes:
   caddy_data:
   caddy_config:
   redis_data:
+  fonaredd_uploads:
 
 networks:
   fonaredd-network:

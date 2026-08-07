@@ -1,10 +1,16 @@
 import { getTokenFromRequest, getUserFromToken } from '@/lib/auth';
 import { ensureCongeSchemaAdditive } from '@/lib/conge/superviseur-principal';
+import {
+  absolutePathFromChemin,
+  ensureDir,
+  getCongeUploadsRoot,
+} from '@/lib/conge/uploads-path';
 import { prisma } from '@/lib/prisma';
 import { hasAnyPermission, PERMISSIONS } from '@/lib/rbac';
 import fs from 'fs/promises';
 import path from 'path';
 import type { NextApiRequest, NextApiResponse } from 'next';
+import { createReadStream, existsSync } from 'fs';
 import { randomUUID } from 'crypto';
 
 export const config = {
@@ -27,6 +33,20 @@ function safeName(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 180);
 }
 
+function canViewAttachments(user: any): boolean {
+  return hasAnyPermission(user, [
+    PERMISSIONS.CONGE_ATTACHMENT_VIEW,
+    PERMISSIONS.CONGE_REQUEST,
+    PERMISSIONS.CONGE_TRAITEMENT,
+    PERMISSIONS.MODULE_CONGE,
+    PERMISSIONS.MODULE_ADMIN,
+  ]);
+}
+
+function downloadUrl(id: number): string {
+  return `/api/conge/demande-fichiers?id=${id}&download=1`;
+}
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
@@ -47,19 +67,50 @@ export default async function handler(
 
   try {
     if (req.method === 'GET') {
-      if (
-        !hasAnyPermission(user as any, [
-          PERMISSIONS.CONGE_ATTACHMENT_VIEW,
-          PERMISSIONS.CONGE_REQUEST,
-          PERMISSIONS.CONGE_TRAITEMENT,
-          PERMISSIONS.MODULE_CONGE,
-          PERMISSIONS.MODULE_ADMIN,
-        ])
-      ) {
+      if (!canViewAttachments(user as any)) {
         return res
           .status(403)
           .json({ success: false, message: 'Permissions insuffisantes' });
       }
+
+      // Téléchargement authentifié (évite 404 static Docker)
+      const downloadId = Number(req.query.id);
+      const wantDownload =
+        String(req.query.download || '') === '1' ||
+        String(req.query.download || '') === 'true';
+
+      if (wantDownload && downloadId) {
+        const rows = await prisma.$queryRawUnsafe<any[]>(
+          `SELECT id, nom_original, chemin, mime FROM congedemande_fichier WHERE id = ? LIMIT 1`,
+          downloadId
+        );
+        const row = rows?.[0];
+        if (!row) {
+          return res
+            .status(404)
+            .json({ success: false, message: 'Fichier introuvable en base' });
+        }
+        const abs = absolutePathFromChemin(String(row.chemin || ''));
+        if (!existsSync(abs)) {
+          console.error('PJ manquant sur disque:', abs, 'chemin=', row.chemin);
+          return res.status(404).json({
+            success: false,
+            message:
+              'Fichier absent du serveur (souvent perdu au redéploiement sans volume). Re-joignez le document.',
+          });
+        }
+        const mime = row.mime || 'application/octet-stream';
+        const filename = String(row.nom_original || `fichier-${downloadId}`);
+        res.setHeader('Content-Type', mime);
+        res.setHeader(
+          'Content-Disposition',
+          `inline; filename*=UTF-8''${encodeURIComponent(filename)}`
+        );
+        const stream = createReadStream(abs);
+        stream.pipe(res);
+        return;
+      }
+
       const demandeId = Number(req.query.demandeId);
       if (!demandeId) {
         return res
@@ -83,7 +134,7 @@ export default async function handler(
           mime: r.mime,
           taille: r.taille != null ? Number(r.taille) : null,
           datecreate: r.datecreate,
-          url: r.chemin?.startsWith('/') ? r.chemin : `/${r.chemin}`,
+          url: downloadUrl(Number(r.id)),
         })),
       });
     }
@@ -112,14 +163,8 @@ export default async function handler(
         });
       }
 
-      const uploadDir = path.join(
-        process.cwd(),
-        'public',
-        'uploads',
-        'conge',
-        String(fkDemande)
-      );
-      await fs.mkdir(uploadDir, { recursive: true });
+      const uploadDir = path.join(getCongeUploadsRoot(), String(fkDemande));
+      await ensureDir(uploadDir);
 
       const saved: any[] = [];
       for (const file of files.slice(0, 10)) {
@@ -132,7 +177,10 @@ export default async function handler(
             message: `Type non autorisé: ${mime || nom} (PDF/JPG/PNG)`,
           });
         }
-        const buf = Buffer.from(b64.replace(/^data:[^;]+;base64,/, ''), 'base64');
+        const buf = Buffer.from(
+          b64.replace(/^data:[^;]+;base64,/, ''),
+          'base64'
+        );
         if (buf.length === 0 || buf.length > MAX_BYTES) {
           return res.status(400).json({
             success: false,
@@ -154,7 +202,19 @@ export default async function handler(
           buf.length,
           Number(user.id)
         );
-        saved.push({ nom_original: nom, chemin, mime, taille: buf.length });
+        const insertRows = await prisma.$queryRawUnsafe<any[]>(
+          `SELECT id FROM congedemande_fichier WHERE chemin = ? ORDER BY id DESC LIMIT 1`,
+          chemin
+        );
+        const newId = insertRows?.[0]?.id != null ? Number(insertRows[0].id) : null;
+        saved.push({
+          id: newId,
+          nom_original: nom,
+          chemin,
+          mime,
+          taille: buf.length,
+          url: newId ? downloadUrl(newId) : chemin,
+        });
       }
 
       return res.status(201).json({
@@ -187,19 +247,17 @@ export default async function handler(
       );
       const row = rows?.[0];
       if (!row) {
-        return res.status(404).json({ success: false, message: 'Fichier introuvable' });
+        return res
+          .status(404)
+          .json({ success: false, message: 'Fichier introuvable' });
       }
       try {
         if (row.chemin) {
-          const abs = path.join(
-            process.cwd(),
-            'public',
-            String(row.chemin).replace(/^\//, '')
-          );
+          const abs = absolutePathFromChemin(String(row.chemin));
           await fs.unlink(abs).catch(() => undefined);
         }
       } catch {
-        /* ignore missing file */
+        /* ignore */
       }
       await prisma.$executeRawUnsafe(
         `DELETE FROM congedemande_fichier WHERE id = ?`,

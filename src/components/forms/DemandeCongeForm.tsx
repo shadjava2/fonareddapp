@@ -868,7 +868,11 @@ const DemandeCongeForm: React.FC<DemandeCongeFormProps> = ({
                           className="flex items-center justify-between gap-2 text-xs bg-white rounded px-2 py-1.5 border border-indigo-100"
                         >
                           <a
-                            href={f.url}
+                            href={
+                              f.url?.includes('download=1')
+                                ? f.url
+                                : `/api/conge/demande-fichiers?id=${f.id}&download=1`
+                            }
                             target="_blank"
                             rel="noreferrer"
                             className="text-indigo-700 hover:underline truncate"
