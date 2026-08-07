@@ -32,6 +32,8 @@ interface DemandeCongeFormData {
   niveau?: number;
   fkSoldes?: string;
   idSuperviseur?: number; // ID utilisateur pour superviseur (phase 3)
+  /** Fichiers à uploader après création (non persistés dans congedemande) */
+  piecesJointes?: File[];
 }
 
 // Interface locale pour gérer l'ID du demandeur (non envoyé à l'API)
@@ -53,6 +55,8 @@ interface CalendrierEntry {
 interface DemandeCongeFormProps {
   onSubmit: (data: DemandeCongeFormData) => void;
   initialData?: DemandeCongeFormData;
+  /** ID demande existante : charge / affiche les PJ déjà enregistrées */
+  demandeId?: number | null;
   submitLabel?: string;
   cancelLabel?: string;
   onCancel?: () => void;
@@ -74,6 +78,7 @@ const STATUT_OPTIONS = [
 const DemandeCongeForm: React.FC<DemandeCongeFormProps> = ({
   onSubmit,
   initialData,
+  demandeId = null,
   submitLabel = 'Sauvegarder',
   cancelLabel = 'Annuler',
   onCancel,
@@ -97,6 +102,11 @@ const DemandeCongeForm: React.FC<DemandeCongeFormProps> = ({
   const remiseEditorRef = useRef<HTMLDivElement>(null);
   const [isRemiseFocused, setIsRemiseFocused] = useState(false);
   const [isRemiseInitialized, setIsRemiseInitialized] = useState(false);
+  const [piecesJointes, setPiecesJointes] = useState<File[]>([]);
+  const [fichiersExistants, setFichiersExistants] = useState<
+    Array<{ id: number; nom_original: string; url: string; mime?: string }>
+  >([]);
+  const [loadingFichiers, setLoadingFichiers] = useState(false);
 
   // Charger les dates du calendrier au chargement
   useEffect(() => {
@@ -202,6 +212,39 @@ const DemandeCongeForm: React.FC<DemandeCongeFormProps> = ({
     };
     fetchUsers();
   }, []);
+
+  const reloadFichiersExistants = async (id: number) => {
+    try {
+      setLoadingFichiers(true);
+      const res = await apiGet<{
+        success: boolean;
+        fichiers?: Array<{
+          id: number;
+          nom_original: string;
+          url: string;
+          mime?: string;
+        }>;
+      }>(`/api/conge/demande-fichiers?demandeId=${id}`);
+      if (res.success) {
+        setFichiersExistants(res.fichiers || []);
+      } else {
+        setFichiersExistants([]);
+      }
+    } catch {
+      setFichiersExistants([]);
+    } finally {
+      setLoadingFichiers(false);
+    }
+  };
+
+  useEffect(() => {
+    setPiecesJointes([]);
+    if (demandeId) {
+      void reloadFichiersExistants(demandeId);
+    } else {
+      setFichiersExistants([]);
+    }
+  }, [demandeId]);
 
   // Mettre à jour les combos quand les utilisateurs sont chargés (après initialData)
   useEffect(() => {
@@ -681,6 +724,7 @@ const DemandeCongeForm: React.FC<DemandeCongeFormProps> = ({
         ...formData,
         statut: 'BROUILLON',
         niveau: 0,
+        piecesJointes,
       };
       onSubmit(finalData);
     }
@@ -793,6 +837,94 @@ const DemandeCongeForm: React.FC<DemandeCongeFormProps> = ({
                 error={errors.fkTypeConge}
                 required
               />
+            </div>
+
+            {/* Pièces jointes — bloc visible tôt dans le formulaire */}
+            <div className="rounded-lg border-2 border-indigo-200 bg-indigo-50/60 p-4 space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold text-indigo-900">
+                  Pièces jointes (PDF, JPG, PNG)
+                </h3>
+                <p className="text-xs text-indigo-800/80 mt-0.5">
+                  Justificatifs (maladie, etc.) — max 5 Mo par fichier. Vous
+                  pouvez en sélectionner plusieurs.
+                </p>
+              </div>
+              {demandeId ? (
+                <div className="text-sm">
+                  <div className="font-medium text-gray-800 mb-1">
+                    Fichiers déjà enregistrés
+                    {loadingFichiers ? '…' : ''}
+                  </div>
+                  {fichiersExistants.length === 0 && !loadingFichiers ? (
+                    <p className="text-xs text-gray-500 italic">
+                      Aucun fichier pour cette demande.
+                    </p>
+                  ) : (
+                    <ul className="space-y-1">
+                      {fichiersExistants.map((f) => (
+                        <li
+                          key={f.id}
+                          className="flex items-center justify-between gap-2 text-xs bg-white rounded px-2 py-1.5 border border-indigo-100"
+                        >
+                          <a
+                            href={f.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-indigo-700 hover:underline truncate"
+                          >
+                            {f.nom_original}
+                          </a>
+                          <button
+                            type="button"
+                            className="text-red-600 hover:text-red-800 shrink-0"
+                            onClick={async () => {
+                              try {
+                                await fetch(
+                                  `/api/conge/demande-fichiers?id=${f.id}`,
+                                  { method: 'DELETE' }
+                                );
+                                await reloadFichiersExistants(demandeId);
+                              } catch (e) {
+                                console.error(e);
+                              }
+                            }}
+                          >
+                            Retirer
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ) : null}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {demandeId
+                    ? 'Ajouter des fichiers'
+                    : 'Joindre des fichiers'}
+                </label>
+                <input
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+                  multiple
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files || []);
+                    setPiecesJointes(files);
+                  }}
+                  className="block w-full text-sm text-gray-700 file:mr-3 file:py-2 file:px-3 file:rounded-md file:border-0 file:bg-indigo-600 file:text-white hover:file:bg-indigo-700"
+                />
+                {piecesJointes.length > 0 && (
+                  <ul className="mt-2 text-xs text-gray-700 list-disc list-inside">
+                    {piecesJointes.map((f) => (
+                      <li key={`${f.name}-${f.size}`}>
+                        {f.name} ({Math.round(f.size / 1024)} Ko) — sera envoyé à
+                        l&apos;enregistrement
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
 
             {/* Nombre de jours */}

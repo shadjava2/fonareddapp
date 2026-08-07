@@ -186,14 +186,16 @@ model calendrier {
 }
 
 model congeconfig {
-  id               BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
-  nbjourMois       Float    @unique(map: "UNIQUEROLE") @db.Float
+  id                     BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  nbjourMois             Float    @unique(map: "UNIQUEROLE") @db.Float
   /// Plafond annuel de jours de congé non justifié autorisés (réinitialisé en janvier sur congesolde)
-  congenonjustifie Float?   @db.Float
-  datecreate       DateTime @default(now()) @db.Timestamp(0)
-  dateupdate       DateTime @default(now()) @updatedAt @db.Timestamp(0)
-  usercreateid     BigInt?  @db.UnsignedBigInt
-  userupdateid     BigInt?  @db.UnsignedBigInt
+  congenonjustifie       Float?   @db.Float
+  /// Agent système nommé superviseur principal (copie email / observation optionnelle)
+  fkSuperviseurPrincipal BigInt?  @db.UnsignedBigInt
+  datecreate             DateTime @default(now()) @db.Timestamp(0)
+  dateupdate             DateTime @default(now()) @updatedAt @db.Timestamp(0)
+  usercreateid           BigInt?  @db.UnsignedBigInt
+  userupdateid           BigInt?  @db.UnsignedBigInt
 
   @@index([id], map: "ndex_role_unique")
   @@map("congeconfig")
@@ -220,6 +222,37 @@ model congedemande {
   userupdateid    BigInt?
 
   @@map("congedemande")
+}
+
+/// Pièces jointes (justificatifs) d'une demande de congé
+model CongedemandeFichier {
+  id           BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  fkDemande    BigInt
+  nom_original String   @db.VarChar(255)
+  chemin       String   @db.VarChar(500)
+  mime         String?  @db.VarChar(120)
+  taille       Int?     @db.UnsignedInt
+  datecreate   DateTime @default(now()) @db.Timestamp(0)
+  usercreateid BigInt?  @db.UnsignedBigInt
+
+  @@index([fkDemande], map: "idx_cdf_demande")
+  @@map("congedemande_fichier")
+}
+
+/// Observations optionnelles du superviseur principal (non bloquantes)
+model CongeObservationPrincipal {
+  id            BigInt   @id @default(autoincrement()) @db.UnsignedBigInt
+  fkDemande     BigInt
+  fkUtilisateur BigInt   @db.UnsignedBigInt
+  observations  String?  @db.Text
+  datecreate    DateTime @default(now()) @db.Timestamp(0)
+  dateupdate    DateTime @default(now()) @updatedAt @db.Timestamp(0)
+  usercreateid  BigInt?  @db.UnsignedBigInt
+  userupdateid  BigInt?  @db.UnsignedBigInt
+
+  @@index([fkDemande], map: "idx_obs_demande")
+  @@index([fkUtilisateur], map: "idx_obs_user")
+  @@map("conge_observation_principal")
 }
 
 model congesolde {

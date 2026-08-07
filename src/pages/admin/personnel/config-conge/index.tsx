@@ -9,6 +9,7 @@ interface ConfigConge {
   id: number;
   nbjourMois: number;
   congenonjustifie?: number | null;
+  fkSuperviseurPrincipal?: number | string | null;
   datecreate: string;
   dateupdate: string;
   usercreateid?: number;
@@ -223,6 +224,16 @@ const ConfigCongePage: React.FC = () => {
                       </span>
                     </div>
                     <div className="flex justify-between">
+                      <span className="text-sm text-gray-600">
+                        Superviseur principal:
+                      </span>
+                      <span className="text-sm font-medium text-gray-900">
+                        {configConge.fkSuperviseurPrincipal
+                          ? `ID ${configConge.fkSuperviseurPrincipal}`
+                          : '—'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
                       <span className="text-sm text-gray-600">Créé le:</span>
                       <span className="text-sm font-medium text-gray-900">
                         {new Date(configConge.datecreate).toLocaleDateString(
@@ -298,7 +309,7 @@ const ConfigCongePage: React.FC = () => {
         {/* Modal de formulaire */}
         {showForm && (
           <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-            <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div className="relative top-20 mx-auto p-5 border w-full max-w-lg shadow-lg rounded-md bg-white">
               <div className="mt-3">
                 <h3 className="text-lg font-medium text-gray-900 mb-4">
                   {configConge
@@ -312,6 +323,10 @@ const ConfigCongePage: React.FC = () => {
                       ? {
                           nbjourMois: configConge.nbjourMois,
                           congenonjustifie: configConge.congenonjustifie ?? null,
+                          fkSuperviseurPrincipal:
+                            configConge.fkSuperviseurPrincipal != null
+                              ? Number(configConge.fkSuperviseurPrincipal)
+                              : null,
                         }
                       : undefined
                   }

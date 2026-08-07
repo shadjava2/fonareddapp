@@ -66,7 +66,7 @@ export function collectAccessFromUser(user: UserWithAccess): {
   return { permissions: [...permissionSet], services };
 }
 
-function profilePayload(
+async function profilePayload(
   user: UserWithAccess & {
     id: bigint;
     nom: string;
@@ -77,13 +77,19 @@ function profilePayload(
     fkRole: bigint | null;
     initPassword: boolean | null;
   }
-): UserProfile {
+): Promise<UserProfile> {
   let { permissions, services } = collectAccessFromUser(user);
-  if (
-    user.fkRole != null &&
-    user.fkRole === BigInt(ROLE_ID_FULL_ACCESS)
-  ) {
-    permissions = ['*'];
+  // Rôle admin (ex. Mo) : toutes les permissions du catalogue en DB — pas de bypass magique '*'
+  if (user.fkRole != null && user.fkRole === BigInt(ROLE_ID_FULL_ACCESS) && prisma) {
+    try {
+      const all = await prisma.permissions.findMany({ select: { nom: true } });
+      const noms = all.map((p) => p.nom).filter(Boolean) as string[];
+      if (noms.length > 0) {
+        permissions = noms;
+      }
+    } catch (e) {
+      console.warn('profilePayload full-access perms:', e);
+    }
   }
   return {
     id: user.id.toString(),
@@ -179,7 +185,7 @@ export async function authenticateUser(
     return null;
   }
 
-  return profilePayload(user);
+  return await profilePayload(user);
 }
 
 /**
@@ -202,7 +208,7 @@ export async function getUserFromToken(
     return null;
   }
 
-  return profilePayload(user);
+  return await profilePayload(user);
 }
 
 /**

@@ -1,4 +1,6 @@
+import { requireApiPermissions } from '@/lib/api-auth';
 import { prisma } from '@/lib/prisma';
+import { PERMISSIONS } from '@/lib/rbac';
 import type { NextApiRequest, NextApiResponse } from 'next';
 
 function formatRow(row: any) {
@@ -38,6 +40,13 @@ export default async function handler(
 
   try {
     if (req.method === 'GET') {
+      const authUser = await requireApiPermissions(req, res, [
+        PERMISSIONS.CALENDAR_MANAGE,
+        PERMISSIONS.MODULE_CONGE,
+        PERMISSIONS.CONGE_REQUEST,
+        PERMISSIONS.MODULE_ADMIN,
+      ]);
+      if (!authUser) return;
       const page = Math.max(1, parseInt(String(req.query.page || '1'), 10));
       const limit = Math.max(1, parseInt(String(req.query.limit || '25'), 10));
       const skip = (page - 1) * limit;
@@ -76,6 +85,13 @@ export default async function handler(
     }
 
     if (req.method === 'POST') {
+      const authUser = await requireApiPermissions(req, res, [
+        PERMISSIONS.CALENDAR_CREATE,
+        PERMISSIONS.CALENDAR_MANAGE,
+        PERMISSIONS.MODULE_ADMIN,
+      ]);
+      if (!authUser) return;
+
       const { d, label } = req.body || {};
       if (!d) {
         return res.status(400).json({
@@ -110,6 +126,13 @@ export default async function handler(
     }
 
     if (req.method === 'PUT') {
+      const authUser = await requireApiPermissions(req, res, [
+        PERMISSIONS.CALENDAR_EDIT,
+        PERMISSIONS.CALENDAR_MANAGE,
+        PERMISSIONS.MODULE_ADMIN,
+      ]);
+      if (!authUser) return;
+
       const id = String(req.query.id || '');
       if (!id) {
         return res.status(400).json({
@@ -151,6 +174,13 @@ export default async function handler(
     }
 
     if (req.method === 'DELETE') {
+      const authUser = await requireApiPermissions(req, res, [
+        PERMISSIONS.CALENDAR_DELETE,
+        PERMISSIONS.CALENDAR_MANAGE,
+        PERMISSIONS.MODULE_ADMIN,
+      ]);
+      if (!authUser) return;
+
       const id = String(req.query.id || '');
       if (!id) {
         return res.status(400).json({

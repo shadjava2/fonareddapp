@@ -3,15 +3,42 @@ import CongeAppShell from '@/components/layout/CongeAppShell';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { useAuth, usePermissions } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/useToast';
-import { apiGet, apiPost, apiPut } from '@/lib/fetcher';
+import { Can } from '@/components/auth/Can';
+import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/fetcher';
 import { PERMISSIONS } from '@/lib/rbac';
 import { formatPersonDisplayName } from '@/lib/user-display-name';
 import {
   DocumentTextIcon,
+  PaperClipIcon,
   PlusIcon,
   PrinterIcon,
 } from '@heroicons/react/24/outline';
 import React, { useEffect, useState } from 'react';
+
+async function fileToBase64(file: File): Promise<string> {
+  const buf = await file.arrayBuffer();
+  let binary = '';
+  const bytes = new Uint8Array(buf);
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+async function uploadPiecesJointes(demandeId: number, files: File[]) {
+  if (!files?.length) return;
+  const payload = {
+    demandeId,
+    files: await Promise.all(
+      files.map(async (f) => ({
+        nom: f.name,
+        mime: f.type || 'application/octet-stream',
+        contentBase64: await fileToBase64(f),
+      }))
+    ),
+  };
+  await apiPost('/api/conge/demande-fichiers', payload);
+}
 
 interface DemandeConge {
   id: number;
@@ -33,6 +60,7 @@ interface DemandeConge {
   dateupdate?: string;
   usercreateid?: number;
   userupdateid?: number;
+  fichiersCount?: number;
 }
 
 interface TypeConge {
@@ -57,11 +85,17 @@ const DemandeCongePage: React.FC = () => {
   );
   const [showAnnulerDialog, setShowAnnulerDialog] = useState(false);
   const [isAnnulating, setIsAnnulating] = useState(false);
+  const [demandeToDelete, setDemandeToDelete] = useState<DemandeConge | null>(
+    null
+  );
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [showAllDemandes, setShowAllDemandes] = useState(false);
   const canToggleAllDemandes = hasAnyPermission([
     PERMISSIONS.CONGE_DEMANDES_ALL,
     PERMISSIONS.CONGE_TRAITEMENT,
+    PERMISSIONS.CONGE_TRAITEMENT_VIEW_ALL,
     PERMISSIONS.MODULE_ADMIN,
   ]);
 
@@ -223,6 +257,49 @@ const DemandeCongePage: React.FC = () => {
   const handleAnnulerCancel = () => {
     setShowAnnulerDialog(false);
     setDemandeToAnnuler(null);
+  };
+
+  const handleDeleteClick = (demande: DemandeConge) => {
+    if (demande.statut && demande.statut !== 'BROUILLON') {
+      showError(
+        'Suppression impossible',
+        'Seules les demandes au statut « Brouillon » peuvent être supprimées. Utilisez Annuler sinon.'
+      );
+      return;
+    }
+    setDemandeToDelete(demande);
+    setShowDeleteDialog(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!demandeToDelete) return;
+    try {
+      setIsDeleting(true);
+      const response = await apiDelete<{
+        success: boolean;
+        message?: string;
+      }>(`/api/conge/demandes?id=${demandeToDelete.id}`);
+      if (response.success) {
+        await fetchDemandes();
+        showSuccess('Demande supprimée', 'La demande a été supprimée définitivement');
+      } else {
+        showError(
+          'Erreur de suppression',
+          response.message || 'Impossible de supprimer la demande'
+        );
+      }
+    } catch (error: any) {
+      showError(
+        'Erreur de suppression',
+        error?.response?.data?.message ||
+          error?.message ||
+          'Impossible de supprimer la demande'
+      );
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteDialog(false);
+      setDemandeToDelete(null);
+    }
   };
 
   /**
@@ -621,22 +698,25 @@ const DemandeCongePage: React.FC = () => {
   const handleFormSubmit = async (data: any) => {
     try {
       setIsSubmitting(true);
+      const { piecesJointes, ...payload } = data || {};
 
       if (editingDemande) {
         console.log('🔄 Modification de la demande ID:', editingDemande.id);
-        console.log('📦 Données envoyées:', JSON.stringify(data, null, 2));
+        console.log('📦 Données envoyées:', JSON.stringify(payload, null, 2));
 
         const response = await apiPut<{
           success: boolean;
           demande: DemandeConge;
           message?: string;
-        }>(`/api/conge/demandes?id=${editingDemande.id}`, data);
+        }>(`/api/conge/demandes?id=${editingDemande.id}`, payload);
 
         if (response.success) {
+          if (piecesJointes?.length && response.demande?.id) {
+            await uploadPiecesJointes(Number(response.demande.id), piecesJointes);
+          }
           console.log(
             '✅ Demande modifiée avec succès, rechargement des données...'
           );
-          // Recharger les données depuis le serveur pour s'assurer d'avoir les dernières données
           await fetchDemandes();
           showSuccess(
             'Demande modifiée',
@@ -652,20 +732,23 @@ const DemandeCongePage: React.FC = () => {
         }
       } else {
         console.log("➕ Création d'une nouvelle demande");
-        console.log('📦 Données envoyées:', JSON.stringify(data, null, 2));
+        console.log('📦 Données envoyées:', JSON.stringify(payload, null, 2));
 
         const response = await apiPost<{
           success: boolean;
           demande: DemandeConge;
           message?: string;
           error?: string;
-        }>('/api/conge/demandes', data);
+        }>('/api/conge/demandes', payload);
 
         if (response.success) {
+          const newId = Number(response.demande?.id);
+          if (piecesJointes?.length && newId) {
+            await uploadPiecesJointes(newId, piecesJointes);
+          }
           console.log(
             '✅ Demande créée avec succès, rechargement des données...'
           );
-          // Recharger les données depuis le serveur
           await fetchDemandes();
           showSuccess(
             'Demande créée',
@@ -681,7 +764,6 @@ const DemandeCongePage: React.FC = () => {
             response.error ||
             'Impossible de créer la demande';
           showError('Erreur de création', errorMsg);
-          // Ne pas fermer le formulaire en cas d'erreur pour que l'utilisateur puisse corriger
           return;
         }
       }
@@ -779,13 +861,21 @@ const DemandeCongePage: React.FC = () => {
                   </p>
                 </div>
               </div>
-              <button
-                onClick={handleCreate}
-                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              <Can
+                permissions={[
+                  PERMISSIONS.CONGE_REQUEST_CREATE,
+                  PERMISSIONS.CONGE_REQUEST,
+                  PERMISSIONS.MODULE_ADMIN,
+                ]}
               >
-                <PlusIcon className="h-4 w-4 mr-2" />
-                Ajouter
-              </button>
+                <button
+                  onClick={handleCreate}
+                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                >
+                  <PlusIcon className="h-4 w-4 mr-2" />
+                  Ajouter
+                </button>
+              </Can>
             </div>
           </div>
         </div>
@@ -879,6 +969,9 @@ const DemandeCongePage: React.FC = () => {
                       SECTION
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      PJ
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       ACTIONS
                     </th>
                   </tr>
@@ -930,54 +1023,118 @@ const DemandeCongePage: React.FC = () => {
                           )}
                         </div>
                       </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <Can
+                          permissions={[
+                            PERMISSIONS.CONGE_ATTACHMENT_VIEW,
+                            PERMISSIONS.CONGE_REQUEST,
+                            PERMISSIONS.MODULE_ADMIN,
+                          ]}
+                        >
+                          <span
+                            className="inline-flex items-center gap-1 text-sm text-gray-700"
+                            title="Pièces jointes"
+                          >
+                            <PaperClipIcon className="h-4 w-4 text-indigo-600" />
+                            {demande.fichiersCount ?? 0}
+                          </span>
+                        </Can>
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <div className="flex items-center space-x-2">
-                          <button
-                            onClick={() => handleEdit(demande)}
-                            disabled={demande.statut !== 'BROUILLON'}
-                            className={
-                              demande.statut === 'BROUILLON'
-                                ? 'text-indigo-600 hover:text-indigo-900 cursor-pointer'
-                                : 'text-gray-400 cursor-not-allowed opacity-50'
-                            }
-                            title={
-                              demande.statut !== 'BROUILLON'
-                                ? 'Seules les demandes au statut "Brouillon" peuvent être modifiées'
-                                : 'Modifier la demande'
-                            }
+                          <Can
+                            permissions={[
+                              PERMISSIONS.CONGE_REQUEST_EDIT,
+                              PERMISSIONS.CONGE_REQUEST,
+                              PERMISSIONS.MODULE_ADMIN,
+                            ]}
                           >
-                            Modifier
-                          </button>
-                          <button
-                            onClick={() => handleAnnulerClick(demande)}
-                            disabled={
-                              demande.statut === 'ANNULEE' ||
-                              demande.statut === 'REFUSEE'
-                            }
-                            className={
-                              demande.statut === 'ANNULEE' ||
-                              demande.statut === 'REFUSEE'
-                                ? 'text-gray-400 cursor-not-allowed opacity-50'
-                                : 'text-orange-600 hover:text-orange-900 cursor-pointer'
-                            }
-                            title={
-                              demande.statut === 'ANNULEE'
-                                ? 'Cette demande est déjà annulée'
-                                : demande.statut === 'REFUSEE'
-                                  ? 'Une demande refusée ne peut pas être annulée'
-                                  : 'Annuler la demande (changer le statut en Annulée)'
-                            }
+                            <button
+                              onClick={() => handleEdit(demande)}
+                              disabled={demande.statut !== 'BROUILLON'}
+                              className={
+                                demande.statut === 'BROUILLON'
+                                  ? 'text-indigo-600 hover:text-indigo-900 cursor-pointer'
+                                  : 'text-gray-400 cursor-not-allowed opacity-50'
+                              }
+                              title={
+                                demande.statut !== 'BROUILLON'
+                                  ? 'Seules les demandes au statut "Brouillon" peuvent être modifiées'
+                                  : 'Modifier la demande'
+                              }
+                            >
+                              Modifier
+                            </button>
+                          </Can>
+                          <Can
+                            permissions={[
+                              PERMISSIONS.CONGE_REQUEST_CANCEL,
+                              PERMISSIONS.CONGE_REQUEST,
+                              PERMISSIONS.MODULE_ADMIN,
+                            ]}
                           >
-                            Annuler
-                          </button>
-                          {/* Bouton Imprimer */}
-                          <button
-                            onClick={() => handleImprimer(demande)}
-                            className="text-gray-600 hover:text-gray-900 transition-colors duration-200"
-                            title="Imprimer le rapport de la demande"
+                            <button
+                              onClick={() => handleAnnulerClick(demande)}
+                              disabled={
+                                demande.statut === 'ANNULEE' ||
+                                demande.statut === 'REFUSEE'
+                              }
+                              className={
+                                demande.statut === 'ANNULEE' ||
+                                demande.statut === 'REFUSEE'
+                                  ? 'text-gray-400 cursor-not-allowed opacity-50'
+                                  : 'text-orange-600 hover:text-orange-900 cursor-pointer'
+                              }
+                              title={
+                                demande.statut === 'ANNULEE'
+                                  ? 'Cette demande est déjà annulée'
+                                  : demande.statut === 'REFUSEE'
+                                    ? 'Une demande refusée ne peut pas être annulée'
+                                    : 'Annuler la demande (changer le statut en Annulée)'
+                              }
+                            >
+                              Annuler
+                            </button>
+                          </Can>
+                          <Can
+                            permissions={[
+                              PERMISSIONS.CONGE_REQUEST_DELETE,
+                              PERMISSIONS.CONGE_REQUEST,
+                              PERMISSIONS.MODULE_ADMIN,
+                            ]}
                           >
-                            <PrinterIcon className="h-5 w-5" />
-                          </button>
+                            <button
+                              onClick={() => handleDeleteClick(demande)}
+                              disabled={demande.statut !== 'BROUILLON'}
+                              className={
+                                demande.statut === 'BROUILLON'
+                                  ? 'text-red-600 hover:text-red-900 cursor-pointer'
+                                  : 'text-gray-400 cursor-not-allowed opacity-50'
+                              }
+                              title={
+                                demande.statut !== 'BROUILLON'
+                                  ? 'Suppression réservée aux brouillons'
+                                  : 'Supprimer définitivement la demande'
+                              }
+                            >
+                              Supprimer
+                            </button>
+                          </Can>
+                          <Can
+                            permissions={[
+                              PERMISSIONS.CONGE_REQUEST_PRINT,
+                              PERMISSIONS.CONGE_REQUEST,
+                              PERMISSIONS.MODULE_ADMIN,
+                            ]}
+                          >
+                            <button
+                              onClick={() => handleImprimer(demande)}
+                              className="text-gray-600 hover:text-gray-900 transition-colors duration-200"
+                              title="Imprimer le rapport de la demande"
+                            >
+                              <PrinterIcon className="h-5 w-5" />
+                            </button>
+                          </Can>
                         </div>
                       </td>
                     </tr>
@@ -1026,6 +1183,7 @@ const DemandeCongePage: React.FC = () => {
 
             <DemandeCongeForm
               onSubmit={handleFormSubmit}
+              demandeId={editingDemande?.id ?? null}
               initialData={
                 editingDemande
                   ? {
@@ -1072,6 +1230,23 @@ const DemandeCongePage: React.FC = () => {
         confirmText="Annuler la demande"
         cancelText="Retour"
         loading={isAnnulating}
+      />
+
+      <ConfirmDialog
+        isOpen={showDeleteDialog}
+        onClose={() => {
+          setShowDeleteDialog(false);
+          setDemandeToDelete(null);
+        }}
+        onConfirm={handleDeleteConfirm}
+        title="Supprimer la demande"
+        message={`Supprimer définitivement la demande ${
+          demandeToDelete?.demandeur ? `de ${demandeToDelete.demandeur}` : ''
+        } ? Cette action est irréversible (brouillons uniquement).`}
+        type="danger"
+        confirmText="Supprimer"
+        cancelText="Retour"
+        loading={isDeleting}
       />
     </CongeAppShell>
   );

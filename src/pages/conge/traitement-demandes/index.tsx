@@ -1,3 +1,4 @@
+import { Can } from '@/components/auth/Can';
 import TraitementForm from '@/components/forms/TraitementForm';
 import CongeAppShell from '@/components/layout/CongeAppShell';
 import { useActionLoader } from '@/components/ui/ActionLoader';
@@ -7,6 +8,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useToast } from '@/hooks/useToast';
 import { apiGet, apiPut } from '@/lib/fetcher';
+import { PERMISSIONS } from '@/lib/rbac';
 import { cn } from '@/lib/utils';
 import { formatPersonDisplayName } from '@/lib/user-display-name';
 import {
@@ -41,6 +43,7 @@ interface DemandeConge {
   nomsremplacant?: string;
   idSuperviseur?: number;
   superviseurNom?: string;
+  usercreateid?: number;
 }
 
 interface Phase {
@@ -74,11 +77,27 @@ const TraitementDemandesPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [notificationCount, setNotificationCount] = useState(0);
   const [showTraitesOnly, setShowTraitesOnly] = useState(false);
-  /** Ligne principale = une demande ; le modal liste toutes les phases */
-  const [detailDemandeRow, setDetailDemandeRow] = useState<{
-    fkDemande: number;
-    traitements: Traitement[];
+  /** Panneau détail : groupement par individu (demandeur) */
+  const [detailAgentRow, setDetailAgentRow] = useState<{
+    agentKey: string;
+    demandeurLabel: string;
+    demandes: Array<{
+      fkDemande: number;
+      traitements: Traitement[];
+      demande?: DemandeConge;
+      canUserAct: boolean;
+      phasesTraitees: number;
+      phasesTotal: number;
+    }>;
   } | null>(null);
+  const [expandedDemandeId, setExpandedDemandeId] = useState<number | null>(
+    null
+  );
+  const [fichiersDemande, setFichiersDemande] = useState<
+    Array<{ id: number; nom_original: string; url: string; mime?: string }>
+  >([]);
+  const [obsText, setObsText] = useState('');
+  const [savingObs, setSavingObs] = useState(false);
 
   // État pour suivre les chargements individuels
   const [fetchingTraitements, setFetchingTraitements] = useState(false);
@@ -148,9 +167,13 @@ const TraitementDemandesPage: React.FC = () => {
       }>('/api/conge/demandes?assigned=true&limit=1000');
       if (response.success) {
         setDemandes(
-          response.demandes.map((demande) => ({
+          response.demandes.map((demande: any) => ({
             ...demande,
-            id: Number.parseInt(demande.id.toString(), 10),
+            id: Number.parseInt(String(demande.id), 10),
+            usercreateid:
+              demande.usercreateid != null
+                ? Number.parseInt(String(demande.usercreateid), 10)
+                : undefined,
           }))
         );
       }
@@ -1083,8 +1106,8 @@ const TraitementDemandesPage: React.FC = () => {
     isTraitementTraite,
   ]);
 
-  /** Une ligne par demande ; phases agrégées depuis la liste complète */
-  const demandeRows = useMemo(() => {
+  /** Une ligne par individu (demandeur) ; demandes + phases agrégées */
+  const agentRows = useMemo(() => {
     const idSet = new Set<number>();
     for (const t of filteredTraitements) {
       if (t.fkDemande != null && !Number.isNaN(Number(t.fkDemande))) {
@@ -1092,30 +1115,58 @@ const TraitementDemandesPage: React.FC = () => {
       }
     }
     const userId = Number(user?.id);
-    return Array.from(idSet)
-      .map((fkDemande) => {
-        const allForDemande = traitements
-          .filter((t) => t.fkDemande === fkDemande)
-          .sort((a, b) => (a.fkPhase ?? 0) - (b.fkPhase ?? 0));
-        const demande = demandes.find((d) => d.id === fkDemande);
-        const canUserAct = allForDemande.some(
-          (t) => Number(t.userupdateid) === userId && !t.observations
-        );
-        const latest = Math.max(
-          0,
-          ...allForDemande.map((t) =>
-            t.datecreate ? new Date(t.datecreate).getTime() : 0
-          )
-        );
-        const phasesTraitees = allForDemande.filter(isTraitementTraite).length;
+    const demandeGroups = Array.from(idSet).map((fkDemande) => {
+      const allForDemande = traitements
+        .filter((t) => t.fkDemande === fkDemande)
+        .sort((a, b) => (a.fkPhase ?? 0) - (b.fkPhase ?? 0));
+      const demande = demandes.find((d) => d.id === fkDemande);
+      const canUserAct = allForDemande.some(
+        (t) => Number(t.userupdateid) === userId && !t.observations
+      );
+      const latest = Math.max(
+        0,
+        ...allForDemande.map((t) =>
+          t.datecreate ? new Date(t.datecreate).getTime() : 0
+        )
+      );
+      const phasesTraitees = allForDemande.filter(isTraitementTraite).length;
+      return {
+        fkDemande,
+        traitements: allForDemande,
+        demande,
+        canUserAct,
+        latest,
+        phasesTraitees,
+        phasesTotal: allForDemande.length,
+        agentKey:
+          demande?.usercreateid != null
+            ? `u:${demande.usercreateid}`
+            : `n:${(demande?.demandeur || 'inconnu').trim().toLowerCase()}`,
+        demandeurLabel: demande?.demandeur || `Demande #${fkDemande}`,
+      };
+    });
+
+    const byAgent = new Map<string, typeof demandeGroups>();
+    for (const g of demandeGroups) {
+      const list = byAgent.get(g.agentKey) || [];
+      list.push(g);
+      byAgent.set(g.agentKey, list);
+    }
+
+    return Array.from(byAgent.entries())
+      .map(([agentKey, demandesAgent]) => {
+        const canUserAct = demandesAgent.some((d) => d.canUserAct);
+        const latest = Math.max(0, ...demandesAgent.map((d) => d.latest));
+        const demandeurLabel =
+          demandesAgent[0]?.demandeurLabel || 'Demandeur N/A';
         return {
-          fkDemande,
-          traitements: allForDemande,
-          demande,
+          agentKey,
+          demandeurLabel,
+          demandes: demandesAgent,
           canUserAct,
           latest,
-          phasesTraitees,
-          phasesTotal: allForDemande.length,
+          demandesCount: demandesAgent.length,
+          pendingCount: demandesAgent.filter((d) => d.canUserAct).length,
         };
       })
       .sort((a, b) => b.latest - a.latest);
@@ -1128,23 +1179,80 @@ const TraitementDemandesPage: React.FC = () => {
   ]);
 
   useEffect(() => {
-    setDetailDemandeRow((prev) => {
+    setDetailAgentRow((prev) => {
       if (!prev) return prev;
-      const nextTraitements = traitements
-        .filter((t) => t.fkDemande === prev.fkDemande)
-        .sort((a, b) => (a.fkPhase ?? 0) - (b.fkPhase ?? 0));
-      return { ...prev, traitements: nextTraitements };
+      const nextDemandes = prev.demandes.map((d) => ({
+        ...d,
+        traitements: traitements
+          .filter((t) => t.fkDemande === d.fkDemande)
+          .sort((a, b) => (a.fkPhase ?? 0) - (b.fkPhase ?? 0)),
+      }));
+      return { ...prev, demandes: nextDemandes };
     });
   }, [traitements]);
 
   useEffect(() => {
-    if (!detailDemandeRow) return;
+    if (!detailAgentRow) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setDetailDemandeRow(null);
+      if (e.key === 'Escape') {
+        setDetailAgentRow(null);
+        setExpandedDemandeId(null);
+      }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [detailDemandeRow]);
+  }, [detailAgentRow]);
+
+  useEffect(() => {
+    if (!expandedDemandeId) {
+      setFichiersDemande([]);
+      return;
+    }
+    (async () => {
+      try {
+        const res = await apiGet<{
+          success: boolean;
+          fichiers?: Array<{
+            id: number;
+            nom_original: string;
+            url: string;
+            mime?: string;
+          }>;
+        }>(`/api/conge/demande-fichiers?demandeId=${expandedDemandeId}`);
+        if (res.success) setFichiersDemande(res.fichiers || []);
+      } catch {
+        setFichiersDemande([]);
+      }
+    })();
+  }, [expandedDemandeId]);
+
+  const saveObservationPrincipale = async (demandeId: number) => {
+    try {
+      setSavingObs(true);
+      const res = await fetch('/api/conge/observation-principal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          demandeId,
+          observations: obsText,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showSuccess(
+          'Observation enregistrée',
+          'Observation optionnelle (non bloquante) enregistrée'
+        );
+        setObsText('');
+      } else {
+        showError('Erreur observation', data.message || 'Erreur observation');
+      }
+    } catch (e: any) {
+      showError('Erreur observation', e?.message || 'Erreur observation');
+    } finally {
+      setSavingObs(false);
+    }
+  };
 
   return (
     <CongeAppShell>
@@ -1179,9 +1287,10 @@ const TraitementDemandesPage: React.FC = () => {
                       fetchingPhases) && <Loader size="sm" className="ml-2" />}
                   </h1>
                   <p className="text-sm text-gray-500">
-                    Une ligne par demande. Le fond vert clair indique qu&apos;au
-                    moins une phase vous est assignée et attend votre saisie ;
-                    les autres lignes sont grisées (consultation).
+                    Une ligne par agent (demandeur). Cliquez pour voir ses
+                    demandes et phases. Le fond vert clair indique qu&apos;une
+                    action vous est assignée ; les autres lignes sont en
+                    consultation.
                   </p>
                 </div>
               </div>
@@ -1221,11 +1330,11 @@ const TraitementDemandesPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Liste regroupée par demande */}
+        {/* Liste regroupée par individu */}
         <div className="bg-white shadow rounded-lg overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200">
             <h3 className="text-lg font-medium text-gray-900">
-              Demandes ({demandeRows.length})
+              Agents ({agentRows.length})
             </h3>
           </div>
           <div className="overflow-x-auto">
@@ -1233,15 +1342,15 @@ const TraitementDemandesPage: React.FC = () => {
               <div className="flex justify-center items-center py-12">
                 <Loader size="lg" text="Chargement des traitements..." />
               </div>
-            ) : demandeRows.length === 0 ? (
+            ) : agentRows.length === 0 ? (
               <div className="text-center py-12">
                 <ClipboardDocumentCheckIcon className="mx-auto h-12 w-12 text-gray-400" />
                 <h3 className="mt-2 text-sm font-medium text-gray-900">
-                  Aucune demande trouvée
+                  Aucun agent trouvé
                 </h3>
                 <p className="mt-1 text-sm text-gray-500">
                   {searchTerm
-                    ? 'Aucune demande ne correspond à votre recherche.'
+                    ? 'Aucune entrée ne correspond à votre recherche.'
                     : "Vous n'avez aucun traitement assigné à votre compte."}
                 </p>
               </div>
@@ -1250,7 +1359,7 @@ const TraitementDemandesPage: React.FC = () => {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Demande
+                      Agent / demandes
                     </th>
                     <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-24">
                       Actions
@@ -1264,24 +1373,33 @@ const TraitementDemandesPage: React.FC = () => {
                       <TableRowSkeleton cols={2} />
                     </>
                   ) : (
-                    demandeRows.map((row) => (
+                    agentRows.map((row) => (
                       <tr
-                        key={row.fkDemande}
+                        key={row.agentKey}
                         tabIndex={0}
-                        aria-label={`Ouvrir le détail de la demande ${row.fkDemande}`}
-                        onClick={() =>
-                          setDetailDemandeRow({
-                            fkDemande: row.fkDemande,
-                            traitements: row.traitements,
-                          })
-                        }
+                        aria-label={`Ouvrir les demandes de ${row.demandeurLabel}`}
+                        onClick={() => {
+                          setDetailAgentRow({
+                            agentKey: row.agentKey,
+                            demandeurLabel: row.demandeurLabel,
+                            demandes: row.demandes,
+                          });
+                          const firstAct = row.demandes.find((d) => d.canUserAct);
+                          setExpandedDemandeId(
+                            firstAct?.fkDemande ?? row.demandes[0]?.fkDemande ?? null
+                          );
+                        }}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' || e.key === ' ') {
                             e.preventDefault();
-                            setDetailDemandeRow({
-                              fkDemande: row.fkDemande,
-                              traitements: row.traitements,
+                            setDetailAgentRow({
+                              agentKey: row.agentKey,
+                              demandeurLabel: row.demandeurLabel,
+                              demandes: row.demandes,
                             });
+                            setExpandedDemandeId(
+                              row.demandes[0]?.fkDemande ?? null
+                            );
                           }
                         }}
                         className={cn(
@@ -1304,26 +1422,16 @@ const TraitementDemandesPage: React.FC = () => {
                             />
                             <div className="min-w-0 flex-1">
                               <div className="text-sm font-semibold truncate">
-                                #{row.fkDemande} —{' '}
-                                {row.demande?.demandeur || 'Demandeur N/A'}
+                                {row.demandeurLabel}
                               </div>
                               <div className="text-xs truncate mt-0.5">
-                                {row.demande?.du
-                                  ? new Date(row.demande.du).toLocaleDateString(
-                                      'fr-FR'
-                                    )
-                                  : '?'}{' '}
-                                →{' '}
-                                {row.demande?.au
-                                  ? new Date(row.demande.au).toLocaleDateString(
-                                      'fr-FR'
-                                    )
-                                  : '?'}{' '}
-                                · {row.demande?.nbrjour ?? '?'} j. ·{' '}
-                                {row.phasesTraitees}/{row.phasesTotal} phase(s)
-                                {row.canUserAct ? (
+                                {row.demandesCount} demande
+                                {row.demandesCount > 1 ? 's' : ''}
+                                {row.pendingCount > 0 ? (
                                   <span className="ml-2 font-medium text-emerald-800">
-                                    — Action requise
+                                    — {row.pendingCount} action
+                                    {row.pendingCount > 1 ? 's' : ''} requise
+                                    {row.pendingCount > 1 ? 's' : ''}
                                   </span>
                                 ) : (
                                   <span className="ml-2 text-gray-500">
@@ -1338,10 +1446,10 @@ const TraitementDemandesPage: React.FC = () => {
                           <button
                             type="button"
                             className="inline-flex p-2 rounded-md text-gray-600 hover:bg-white/80 hover:text-gray-900"
-                            title="Imprimer le rapport"
+                            title="Imprimer la première demande"
                             onClick={(e) => {
                               e.stopPropagation();
-                              const first = row.traitements[0];
+                              const first = row.demandes[0]?.traitements[0];
                               if (first) handleImprimer(first);
                             }}
                           >
@@ -1358,53 +1466,38 @@ const TraitementDemandesPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Détail des phases pour une demande */}
-      {detailDemandeRow && (
-        <div
-          className="fixed inset-0 z-[35] overflow-y-auto bg-gray-600/50 backdrop-blur-sm flex items-center justify-center p-4 relative"
-        >
+      {/* Détail par individu : demandes + phases */}
+      {detailAgentRow && (
+        <div className="fixed inset-0 z-[35] overflow-y-auto bg-gray-600/50 backdrop-blur-sm flex items-center justify-center p-4 relative">
           <button
             type="button"
             tabIndex={-1}
             className="absolute inset-0 cursor-default"
             aria-label="Fermer le panneau détail"
-            onClick={() => setDetailDemandeRow(null)}
+            onClick={() => {
+              setDetailAgentRow(null);
+              setExpandedDemandeId(null);
+            }}
           />
-          <div
-            className="relative bg-white rounded-lg shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col z-[1]"
-          >
+          <div className="relative bg-white rounded-lg shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col z-[1]">
             <div className="px-6 py-4 border-b border-gray-200 flex items-start justify-between gap-4 shrink-0">
               <div className="min-w-0">
-                <h3
-                  id="detail-demande-title"
-                  className="text-lg font-semibold text-gray-900"
-                >
-                  Demande #{detailDemandeRow.fkDemande} — phases de traitement
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {detailAgentRow.demandeurLabel}
                 </h3>
-                {(() => {
-                  const d = demandes.find(
-                    (x) => x.id === detailDemandeRow.fkDemande
-                  );
-                  if (!d) return null;
-                  return (
-                    <p className="text-sm text-gray-600 mt-1">
-                      {d.demandeur} ·{' '}
-                      {d.du
-                        ? new Date(d.du).toLocaleDateString('fr-FR')
-                        : '?'}{' '}
-                      →{' '}
-                      {d.au
-                        ? new Date(d.au).toLocaleDateString('fr-FR')
-                        : '?'}{' '}
-                      · {d.nbrjour ?? '?'} jour(s)
-                    </p>
-                  );
-                })()}
+                <p className="text-sm text-gray-600 mt-1">
+                  {detailAgentRow.demandes.length} demande
+                  {detailAgentRow.demandes.length > 1 ? 's' : ''} — sélectionnez
+                  une demande pour voir les phases
+                </p>
               </div>
               <button
                 type="button"
                 className="rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700 shrink-0"
-                onClick={() => setDetailDemandeRow(null)}
+                onClick={() => {
+                  setDetailAgentRow(null);
+                  setExpandedDemandeId(null);
+                }}
               >
                 <span className="sr-only">Fermer</span>
                 <svg
@@ -1423,156 +1516,195 @@ const TraitementDemandesPage: React.FC = () => {
                 </svg>
               </button>
             </div>
-            <div className="overflow-y-auto flex-1 min-h-0 p-4">
-              <table className="min-w-full divide-y divide-gray-200 text-sm">
-                <thead className="bg-gray-50 sticky top-0">
-                  <tr>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                      Phase
-                    </th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                      Demandeur / Remplaçant / Superviseur
-                    </th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                      Observations
-                    </th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                      Conformité
-                    </th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                      Approbation
-                    </th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 bg-white">
-                  {detailDemandeRow.traitements.map((traitement) => {
-                    const isMine =
-                      Number(traitement.userupdateid) === Number(user?.id);
-                    const rowHighlight =
-                      isMine && !traitement.observations
-                        ? 'bg-emerald-50/90'
-                        : 'bg-gray-50/80 text-gray-600';
-                    return (
-                      <tr key={traitement.id} className={rowHighlight}>
-                        <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-900">
-                          {getPhaseLabelMemo(traitement.fkPhase)}
-                        </td>
-                        <td className="px-3 py-2">
-                          {(() => {
-                            const demande = demandes.find(
-                              (de) => de.id === traitement.fkDemande
-                            );
-                            return (
-                              <div className="text-xs space-y-0.5">
-                                <div>
-                                  <span className="font-semibold">
-                                    Demandeur:
-                                  </span>{' '}
-                                  {demande?.demandeur || 'N/A'}
-                                </div>
-                                <div>
-                                  <span className="font-semibold">
-                                    Remplaçant:
-                                  </span>{' '}
-                                  {demande?.nomsremplacant || 'N/A'}
-                                </div>
-                                <div>
-                                  <span className="font-semibold">
-                                    Superviseur:
-                                  </span>{' '}
-                                  {demande?.superviseurNom ||
-                                    (demande?.idSuperviseur
-                                      ? `ID ${demande.idSuperviseur}`
-                                      : 'N/A')}
-                                </div>
-                              </div>
-                            );
-                          })()}
-                        </td>
-                        <td className="px-3 py-2 max-w-[14rem]">
-                          <div className="truncate" title={traitement.observations}>
-                            {traitement.observations || (
-                              <span className="text-gray-400 italic">
-                                Aucune observation
-                              </span>
-                            )}
+            <div className="overflow-y-auto flex-1 min-h-0 p-4 space-y-4">
+              {detailAgentRow.demandes.map((dRow) => {
+                const isOpen = expandedDemandeId === dRow.fkDemande;
+                const d = dRow.demande;
+                return (
+                  <div
+                    key={dRow.fkDemande}
+                    className={cn(
+                      'border rounded-lg overflow-hidden',
+                      dRow.canUserAct
+                        ? 'border-emerald-300 bg-emerald-50/40'
+                        : 'border-gray-200'
+                    )}
+                  >
+                    <button
+                      type="button"
+                      className="w-full text-left px-4 py-3 flex items-center justify-between gap-2 hover:bg-white/60"
+                      onClick={() =>
+                        setExpandedDemandeId(isOpen ? null : dRow.fkDemande)
+                      }
+                    >
+                      <div>
+                        <div className="text-sm font-semibold text-gray-900">
+                          Demande #{dRow.fkDemande}
+                          {dRow.canUserAct ? (
+                            <span className="ml-2 text-xs font-medium text-emerald-800">
+                              Action requise
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="text-xs text-gray-600 mt-0.5">
+                          {d?.du
+                            ? new Date(d.du).toLocaleDateString('fr-FR')
+                            : '?'}{' '}
+                          →{' '}
+                          {d?.au
+                            ? new Date(d.au).toLocaleDateString('fr-FR')
+                            : '?'}{' '}
+                          · {d?.nbrjour ?? '?'} j. · {dRow.phasesTraitees}/
+                          {dRow.phasesTotal} phase(s)
+                        </div>
+                      </div>
+                      <ChevronRightIcon
+                        className={cn(
+                          'h-5 w-5 text-gray-400 transition-transform',
+                          isOpen && 'rotate-90'
+                        )}
+                      />
+                    </button>
+                    {isOpen && (
+                      <div className="border-t border-gray-200 bg-white p-3 space-y-3">
+                        {fichiersDemande.length > 0 && (
+                          <div className="text-sm">
+                            <div className="font-medium text-gray-800 mb-1">
+                              Pièces jointes
+                            </div>
+                            <ul className="list-disc list-inside space-y-1">
+                              {fichiersDemande.map((f) => (
+                                <li key={f.id}>
+                                  <a
+                                    href={f.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-indigo-600 hover:underline"
+                                  >
+                                    {f.nom_original}
+                                  </a>
+                                </li>
+                              ))}
+                            </ul>
                           </div>
-                        </td>
-                        <td className="px-3 py-2 whitespace-nowrap">
-                          {!traitement.observations ? (
-                            <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
-                              En attente
-                            </span>
-                          ) : traitement.conformite === true ? (
-                            <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-800">
-                              Oui
-                            </span>
-                          ) : traitement.conformite === false ? (
-                            <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-red-100 text-red-800">
-                              Non
-                            </span>
-                          ) : (
-                            <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
-                              Non défini
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 whitespace-nowrap">
-                          {!traitement.observations ? (
-                            <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
-                              En attente
-                            </span>
-                          ) : traitement.approbation === true ? (
-                            <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-800">
-                              Approuvé
-                            </span>
-                          ) : traitement.approbation === false ? (
-                            <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-red-100 text-red-800">
-                              Refusé
-                            </span>
-                          ) : (
-                            <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
-                              En attente
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 whitespace-nowrap">
-                          <div className="flex flex-wrap items-center gap-2">
-                            {traitement.observations ? (
-                              <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-800">
-                                Traité
-                              </span>
-                            ) : isMine ? (
-                              <button
-                                type="button"
-                                onClick={() => handleTraiter(traitement)}
-                                className="text-indigo-600 hover:text-indigo-900 font-medium"
-                              >
-                                Traiter
-                              </button>
-                            ) : (
-                              <span className="text-xs text-gray-400 italic">
-                                Assigné à un autre utilisateur
-                              </span>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => handleImprimer(traitement)}
-                              className="text-gray-600 hover:text-gray-900 p-1"
-                              title="Imprimer"
-                            >
-                              <PrinterIcon className="h-5 w-5" />
-                            </button>
+                        )}
+                        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-2">
+                          <div className="text-xs font-medium text-amber-900">
+                            Observation superviseur principal (optionnelle, non
+                            bloquante)
                           </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                          <textarea
+                            className="w-full text-sm rounded border-gray-300"
+                            rows={2}
+                            value={obsText}
+                            onChange={(e) => setObsText(e.target.value)}
+                            placeholder="Commentaire libre…"
+                          />
+                          <button
+                            type="button"
+                            disabled={savingObs || !obsText.trim()}
+                            onClick={() =>
+                              saveObservationPrincipale(dRow.fkDemande)
+                            }
+                            className="text-xs px-3 py-1.5 rounded bg-amber-700 text-white disabled:opacity-50"
+                          >
+                            {savingObs ? 'Enregistrement…' : 'Enregistrer'}
+                          </button>
+                        </div>
+                        <table className="min-w-full divide-y divide-gray-200 text-sm">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                                Phase
+                              </th>
+                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                                Observations
+                              </th>
+                              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                                Actions
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-200">
+                            {dRow.traitements.map((traitement) => {
+                              const isMine =
+                                Number(traitement.userupdateid) ===
+                                Number(user?.id);
+                              return (
+                                <tr
+                                  key={traitement.id}
+                                  className={
+                                    isMine && !traitement.observations
+                                      ? 'bg-emerald-50/90'
+                                      : 'bg-gray-50/80 text-gray-600'
+                                  }
+                                >
+                                  <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-900">
+                                    {getPhaseLabelMemo(traitement.fkPhase)}
+                                  </td>
+                                  <td className="px-3 py-2 max-w-[14rem]">
+                                    <div
+                                      className="truncate"
+                                      title={traitement.observations}
+                                    >
+                                      {traitement.observations || (
+                                        <span className="text-gray-400 italic">
+                                          Aucune observation
+                                        </span>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="px-3 py-2 whitespace-nowrap">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      {traitement.observations ? (
+                                        <span className="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                                          Traité
+                                        </span>
+                                      ) : isMine ? (
+                                        <Can
+                                          permissions={[
+                                            PERMISSIONS.CONGE_TRAITEMENT_ACT,
+                                            PERMISSIONS.CONGE_TRAITEMENT,
+                                            PERMISSIONS.MODULE_ADMIN,
+                                          ]}
+                                        >
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              handleTraiter(traitement)
+                                            }
+                                            className="text-indigo-600 hover:text-indigo-900 font-medium"
+                                          >
+                                            Traiter
+                                          </button>
+                                        </Can>
+                                      ) : (
+                                        <span className="text-xs text-gray-400 italic">
+                                          Assigné à un autre
+                                        </span>
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          handleImprimer(traitement)
+                                        }
+                                        className="text-gray-600 hover:text-gray-900 p-1"
+                                        title="Imprimer"
+                                      >
+                                        <PrinterIcon className="h-5 w-5" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>

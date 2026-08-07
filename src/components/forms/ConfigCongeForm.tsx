@@ -1,19 +1,27 @@
+import AutocompleteSelect from '@/components/ui/AutocompleteSelect';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
+import { apiGet } from '@/lib/fetcher';
+import { formatPersonDisplayName } from '@/lib/user-display-name';
 import React, { useEffect, useState } from 'react';
 
 interface ConfigCongeFormData {
   nbjourMois: number;
-  /** Plafond annuel jours non justifiés (optionnel) */
   congenonjustifie: number | '';
+  fkSuperviseurPrincipal: number | null;
 }
 
 interface ConfigCongeFormProps {
   onSubmit: (data: {
     nbjourMois: number;
     congenonjustifie?: number;
+    fkSuperviseurPrincipal?: number | null;
   }) => void;
-  initialData?: { nbjourMois: number; congenonjustifie?: number | null };
+  initialData?: {
+    nbjourMois: number;
+    congenonjustifie?: number | null;
+    fkSuperviseurPrincipal?: number | null;
+  };
   submitLabel?: string;
   cancelLabel?: string;
   onCancel?: () => void;
@@ -31,8 +39,48 @@ const ConfigCongeForm: React.FC<ConfigCongeFormProps> = ({
   const [formData, setFormData] = useState<ConfigCongeFormData>({
     nbjourMois: 0,
     congenonjustifie: '',
+    fkSuperviseurPrincipal: null,
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [utilisateurs, setUtilisateurs] = useState<
+    Array<{ value: number; label: string }>
+  >([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const response = await apiGet<
+          Array<{
+            id: string;
+            nom: string;
+            prenom: string;
+            username: string;
+            label: string;
+          }>
+        >('/api/admin/users/autocomplete?q=&limit=200');
+        if (Array.isArray(response)) {
+          setUtilisateurs(
+            response
+              .map((u) => {
+                const userId = parseInt(u.id, 10);
+                if (isNaN(userId)) return null;
+                return {
+                  value: userId,
+                  label:
+                    u.label ||
+                    formatPersonDisplayName(u) ||
+                    u.username ||
+                    `User #${u.id}`,
+                };
+              })
+              .filter(Boolean) as Array<{ value: number; label: string }>
+          );
+        }
+      } catch (e) {
+        console.warn('ConfigCongeForm users:', e);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     if (initialData) {
@@ -43,6 +91,10 @@ const ConfigCongeForm: React.FC<ConfigCongeFormProps> = ({
           initialData.congenonjustifie === null
             ? ''
             : Number(initialData.congenonjustifie),
+        fkSuperviseurPrincipal:
+          initialData.fkSuperviseurPrincipal != null
+            ? Number(initialData.fkSuperviseurPrincipal)
+            : null,
       });
     }
   }, [initialData]);
@@ -65,7 +117,6 @@ const ConfigCongeForm: React.FC<ConfigCongeFormProps> = ({
       [field]: numericValue,
     }));
 
-    // Effacer l'erreur quand l'utilisateur commence à taper
     if (errors[field]) {
       setErrors((prev) => ({
         ...prev,
@@ -104,7 +155,10 @@ const ConfigCongeForm: React.FC<ConfigCongeFormProps> = ({
       onSubmit({
         nbjourMois: formData.nbjourMois,
         congenonjustifie:
-          formData.congenonjustifie === '' ? undefined : formData.congenonjustifie,
+          formData.congenonjustifie === ''
+            ? undefined
+            : formData.congenonjustifie,
+        fkSuperviseurPrincipal: formData.fkSuperviseurPrincipal,
       });
     }
   };
@@ -164,7 +218,27 @@ const ConfigCongeForm: React.FC<ConfigCongeFormProps> = ({
         </p>
       </div>
 
-      {/* Information box */}
+      <div>
+        <AutocompleteSelect
+          label="Superviseur principal"
+          placeholder="Rechercher un agent système..."
+          options={utilisateurs}
+          value={formData.fkSuperviseurPrincipal}
+          onChange={(value) => {
+            setFormData((prev) => ({
+              ...prev,
+              fkSuperviseurPrincipal: value != null ? Number(value) : null,
+            }));
+          }}
+        />
+        <p className="mt-1 text-xs text-gray-500">
+          Si distinct du superviseur de la demande : reçoit une copie email et
+          peut laisser une observation optionnelle (non bloquante). Si identique
+          : une seule notification / un seul acteur phase 3. Laisser vide =
+          comportement actuel.
+        </p>
+      </div>
+
       <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
         <div className="flex items-start">
           <div className="flex-shrink-0">
@@ -194,61 +268,13 @@ const ConfigCongeForm: React.FC<ConfigCongeFormProps> = ({
       </div>
 
       <div className="flex justify-end space-x-3 pt-4">
-        <button
-          type="button"
-          onClick={() => window.print()}
-          className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-          title="Imprimer le formulaire"
-        >
-          <svg
-            className="h-5 w-5 mr-2"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"
-            />
-          </svg>
-          Imprimer
-        </button>
         {onCancel && (
           <Button type="button" variant="secondary" onClick={onCancel}>
             {cancelLabel}
           </Button>
         )}
         <Button type="submit" variant="primary" loading={loading}>
-          {loading ? (
-            <>
-              <svg
-                className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                ></circle>
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
-              </svg>
-              Traitement...
-            </>
-          ) : (
-            submitLabel
-          )}
+          {loading ? 'Traitement...' : submitLabel}
         </Button>
       </div>
     </form>

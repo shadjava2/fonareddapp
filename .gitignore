@@ -41,6 +41,15 @@ pids/
 coverage/
 *.lcov
 
+# Dumps / exports Hikvision (ne pas committer)
+docs/hikvision/**/*.db
+docs/hikvision/**/*.csv
+docs/hikvision/**/*.sql
+docs/hikvision/enrlFace/
+docs/hikvision/export_pic/
+public/uploads/conge/**
+!public/uploads/conge/.gitkeep
+
 # nyc test coverage
 .nyc_output
 

@@ -1,164 +1,108 @@
-# 🚀 Déploiement Rapide Ubuntu - Guide Express
+# Déploiement production Ubuntu — Fonaredd (source de vérité)
 
-## Méthode 1 : Script Automatique (Recommandé)
+> **Obligatoire pour tous les agents / opérateurs.**  
+> Ne pas proposer PM2, `/opt/fonaredd-app`, `~/fonaredd`, ni `git pull` seul.  
+> L’application tourne en **Docker** (`app-prod` + Caddy) sous `/opt/fonaredd`.
 
-### Sur votre serveur Ubuntu :
-
-```bash
-# 1. Se connecter au serveur
-ssh ubuntu@91.134.44.14
-
-# 2. Télécharger le script de déploiement
-wget https://raw.githubusercontent.com/shadjava2/fonaredd/main/deploy-ubuntu.sh
-
-# Ou cloner le dépôt
-git clone https://github.com/shadjava2/fonaredd.git
-cd fonaredd
-
-# 3. Rendre le script exécutable
-chmod +x deploy-ubuntu.sh
-
-# 4. Exécuter le script
-./deploy-ubuntu.sh
-```
-
-Le script va automatiquement :
-
-- ✅ Vérifier et installer les prérequis (Node.js, Git, PM2)
-- ✅ Cloner le dépôt
-- ✅ Créer le fichier `.env.local` avec votre DATABASE_URL
-- ✅ Installer les dépendances
-- ✅ Builder l'application
-- ✅ Démarrer avec PM2
-
-## Méthode 2 : Déploiement Manuel
-
-### 1. Installer les prérequis
+## Mise à jour standard (commande unique)
 
 ```bash
-# Mettre à jour le système
-sudo apt update && sudo apt upgrade -y
-
-# Installer Node.js 18
-curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-sudo apt install -y nodejs
-
-# Installer Git
-sudo apt install -y git
-
-# Installer PM2
-sudo npm install -g pm2
+cd /opt/fonaredd
+git fetch origin && git reset --hard origin/main
+sudo env RUN_MIGRATE=0 bash scripts/deploy-with-rollback.sh
 ```
 
-### 2. Cloner et configurer
+- `git reset --hard origin/main` : aligne le code serveur sur GitHub (écrase les modifs locales du dépôt).
+- `RUN_MIGRATE=0` : **ne pas** lancer Prisma migrate (évite les faux rollbacks) ; le schéma prod se met à jour via scripts SQL additifs dans `docs/sql/`.
+- Le script build l’image, redémarre `app-prod`/`caddy`, health-check, rollback image Docker si le health échoue.
+
+### Si Git refuse (ownership / permissions)
 
 ```bash
-# Créer le dossier
-sudo mkdir -p /opt/fonaredd-app
-sudo chown $USER:$USER /opt/fonaredd-app
-
-# Cloner le dépôt
-cd /opt/fonaredd-app
-git clone https://github.com/shadjava2/fonaredd.git .
-
-# Créer .env.local
-nano .env.local
+sudo chown -R fonaredd:fonaredd /opt/fonaredd
+git config --global --add safe.directory /opt/fonaredd
+chmod +x scripts/deploy-with-rollback.sh
 ```
 
-Ajoutez dans `.env.local` :
+Puis relancer la commande standard.  
+Si `RUN_MIGRATE=0` n’est pas pris avec `sudo`, utiliser :
+
+```bash
+sudo env RUN_MIGRATE=0 bash scripts/deploy-with-rollback.sh
+```
+
+## Variables d’environnement (`.env` à la racine `/opt/fonaredd`)
+
+MySQL est sur l’**hôte**, pas dans Docker. Depuis le conteneur :
 
 ```env
-DATABASE_URL="mysql://giformapp:SDconceptsrdc243_243@91.134.44.14:3306/fonaredd-app?allowPublicKeyRetrieval=true&ssl=false&connectTimeout=10000"
-JWT_SECRET="$(openssl rand -base64 32)"
-NEXTAUTH_SECRET="$(openssl rand -base64 32)"
-NEXTAUTH_URL="http://91.134.44.14:3001"
-NODE_ENV="production"
-PORT=3001
+DATABASE_URL="mysql://USER:PASS@host.docker.internal:3306/NOM_BASE?allowPublicKeyRetrieval=true&ssl=false"
+DB_CONNECT_TIMEOUT_MS=15000
+DB_ACQUIRE_TIMEOUT_MS=60000
+DB_CONNECTION_LIMIT=5
+JWT_SECRET="..."
+NEXTAUTH_SECRET="..."
+NEXTAUTH_URL="https://votre-domaine"
 ```
 
-### 3. Installer et builder
+- **Interdit** dans Docker : `@127.0.0.1` / `@localhost` (le conteneur ne voit pas le MySQL hôte).
+- Après changement de `.env` :  
+  `sudo docker compose -p fonaredd --env-file .env up -d --force-recreate app-prod`
+
+Si MySQL a bloqué l’IP Docker :
 
 ```bash
-# Installer les dépendances
-npm install --production --no-optional
-
-# Générer Prisma
-npx prisma generate
-
-# Builder
-npm run build
+sudo mysqladmin flush-hosts
 ```
 
-### 4. Démarrer avec PM2
+## Scripts SQL additifs (prod)
+
+Appliquer manuellement si un déploiement introduit un fichier sous `docs/sql/` (ex. superviseur principal, pièces jointes) :
 
 ```bash
-# Copier le fichier ecosystem.config.js (depuis le dépôt)
-# Modifier le chemin dans ecosystem.config.js si nécessaire
-
-# Démarrer
-pm2 start ecosystem.config.js
-
-# Sauvegarder
-pm2 save
-
-# Configurer le démarrage automatique
-pm2 startup
-# Suivez les instructions affichées
+# Exemple — adapter user/base
+sudo mysql NOM_BASE < docs/sql/conge-superviseur-principal.sql
+sudo mysql NOM_BASE < docs/sql/conge-demande-fichiers.sql
+sudo mysql NOM_BASE < docs/sql/conge-rbac-align-admin.sql
 ```
 
-### 5. Configurer Nginx (Optionnel)
+Règle : **additive only** (`CREATE TABLE IF NOT EXISTS`, `ALTER ... ADD COLUMN` nullable). Jamais de `DROP` / truncate métier.
+
+## Checklist MVP Congé (recette post-deploy)
+
+1. Login OK (compte Mo / rôle 16 = toutes permissions catalogue).
+2. Config congé : définir un **superviseur principal** ; sauvegarder.
+3. Créer une demande avec **pièces jointes** (PDF/JPG/PNG) ; visibles dans traitement.
+4. Si principal ≠ superviseur demande : email copie + observation optionnelle non bloquante.
+5. Si principal = superviseur : une seule notif / un seul acteur phase 3.
+6. Alarme : **1 son** par nouvelle notif ; clignotement menu jusqu’à ouverture Traitement.
+7. Liste traitements **groupée par agent** ; détail au clic.
+8. Boutons Imprimer / Modifier / Annuler / Traiter absents sans permission.
+9. Smoke : `curl -I http://127.0.0.1:13001/` + pages `/conge/demandes-conge` et `/conge/traitement-demandes`.
+
+## Vérifications post-déploiement
 
 ```bash
-# Installer Nginx
-sudo apt install -y nginx
-
-# Copier la configuration
-sudo cp nginx-fonaredd.conf /etc/nginx/sites-available/fonaredd-app
-
-# Activer
-sudo ln -s /etc/nginx/sites-available/fonaredd-app /etc/nginx/sites-enabled/
-
-# Tester et redémarrer
-sudo nginx -t
-sudo systemctl restart nginx
+git log -1 --oneline
+sudo docker compose -p fonaredd ps
+curl -I http://127.0.0.1:13001/
+curl -I http://127.0.0.1:18080/
+sudo docker logs fonaredd-app-prod --tail 80
 ```
 
-### 6. Configurer le Firewall
+## Interdictions
+
+- Ne pas utiliser PM2 pour la prod actuelle.
+- Ne pas documenter `/opt/fonaredd-app` comme chemin actif.
+- Ne pas lancer `prisma migrate deploy` en prod sans décision explicite (`RUN_MIGRATE=1` + `MIGRATE_STRICT` si besoin).
+- Ne pas committer `.env`, dumps Hikvision, photos ACS.
+
+## Première installation (rappel)
+
+Cloner dans `/opt/fonaredd`, créer `.env`, puis :
 
 ```bash
-# Autoriser les ports
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
-sudo ufw allow 3001/tcp
-sudo ufw enable
+sudo env RUN_MIGRATE=0 bash scripts/deploy-with-rollback.sh
 ```
 
-## ✅ Vérification
-
-```bash
-# Vérifier PM2
-pm2 status
-
-# Voir les logs
-pm2 logs fonaredd-app
-
-# Tester l'application
-curl http://localhost:3001
-```
-
-Accédez à : **http://91.134.44.14:3001**
-
-## 🔄 Mise à jour
-
-```bash
-cd /opt/fonaredd-app
-git pull origin main
-npm install --production --no-optional
-npx prisma generate
-npm run build
-pm2 restart fonaredd-app
-```
-
-## 📖 Documentation Complète
-
-Voir `DEPLOIEMENT-UBUNTU.md` pour plus de détails.
+Détails Docker : `docker-compose.yml`, `scripts/deploy-with-rollback.sh`, `Dockerfile`.

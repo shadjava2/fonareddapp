@@ -4,9 +4,30 @@ import { useToast } from '@/hooks/useToast';
 import { useRouter } from 'next/router';
 import React, { useEffect, useRef } from 'react';
 
+const SOUNDED_KEY = 'fonaredd_conge_alarm_sounded_ids';
+
+function loadSoundedIds(): Set<string> {
+  try {
+    const raw = sessionStorage.getItem(SOUNDED_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr.map(String) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveSoundedIds(ids: Set<string>) {
+  try {
+    sessionStorage.setItem(SOUNDED_KEY, JSON.stringify([...ids]));
+  } catch {
+    /* ignore */
+  }
+}
+
 /**
- * Composant global qui gère l'alarme pour les notifications "Non Ouvert"
- * Fonctionne même quand l'utilisateur n'est pas sur la page "Traitement Demandes"
+ * Alarme globale : son one-shot par nouvelle notification ; clignotement tant que
+ * des notifs "Non Ouvert" existent (arrêt à l'ouverture de Traitement Demandes).
  */
 const TraitementAlarmManager: React.FC = () => {
   const router = useRouter();
@@ -14,31 +35,21 @@ const TraitementAlarmManager: React.FC = () => {
   const { showSuccess } = useToast();
   const { setIsAlarmPlaying } = useAlarm();
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const isAlarmPlayingRef = useRef(false);
-  const alarmIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const soundedIdsRef = useRef<Set<string>>(new Set());
   const lastNotificationCountRef = useRef(0);
+  const blinkActiveRef = useRef(false);
 
-  // Vérifier si la page "Traitement Demandes" est ouverte
   const isPageOpen = router.pathname === '/conge/traitement-demandes';
 
-  // Initialiser l'élément audio
   useEffect(() => {
+    soundedIdsRef.current = loadSoundedIds();
     if (!audioRef.current) {
       const audio = new Audio('/mixkit-happy-bells-notification-937.wav');
-      audio.loop = true;
+      audio.loop = false;
       audio.volume = 0.7;
       audio.preload = 'auto';
       audioRef.current = audio;
-
-      audio.addEventListener('error', (e) => {
-        console.error('❌ Erreur audio globale:', e);
-      });
-
-      audio.addEventListener('canplay', () => {
-        console.log('✅ Audio global prêt');
-      });
     }
-
     return () => {
       if (audioRef.current) {
         audioRef.current.pause();
@@ -47,45 +58,45 @@ const TraitementAlarmManager: React.FC = () => {
     };
   }, []);
 
-  // Démarrer l'alarme en boucle
-  const startAlarmLoop = React.useCallback(async () => {
-    if (isAlarmPlayingRef.current || !audioRef.current) return;
+  const setBlink = React.useCallback(
+    (on: boolean) => {
+      blinkActiveRef.current = on;
+      setIsAlarmPlaying(on);
+    },
+    [setIsAlarmPlaying]
+  );
 
-    isAlarmPlayingRef.current = true;
-    setIsAlarmPlaying(true); // Mettre à jour le contexte
-    console.log("📞 DÉMARRAGE DE L'ALARME GLOBALE");
+  const playOneShotForNew = React.useCallback(
+    async (notifications: Array<{ id?: string | number }>) => {
+      if (!audioRef.current || isPageOpen) return;
+      const newOnes: string[] = [];
+      for (const n of notifications) {
+        const id = n.id != null ? String(n.id) : null;
+        if (!id) continue;
+        if (!soundedIdsRef.current.has(id)) {
+          newOnes.push(id);
+        }
+      }
+      if (newOnes.length === 0) return;
 
-    try {
-      audioRef.current.currentTime = 0;
-      await audioRef.current.play();
-      console.log('✅ Alarme globale jouée en boucle');
-    } catch (error: any) {
-      console.error('❌ Erreur lecture alarme globale:', error);
-      isAlarmPlayingRef.current = false;
-      setIsAlarmPlaying(false); // Mettre à jour le contexte
-    }
-  }, [setIsAlarmPlaying]);
+      for (const id of newOnes) {
+        soundedIdsRef.current.add(id);
+      }
+      saveSoundedIds(soundedIdsRef.current);
 
-  // Arrêter l'alarme
-  const stopAlarmLoop = React.useCallback(() => {
-    if (!isAlarmPlayingRef.current) return;
+      try {
+        audioRef.current.currentTime = 0;
+        await audioRef.current.play();
+        console.log(
+          `✅ Alarme one-shot pour ${newOnes.length} nouvelle(s) notif(s)`
+        );
+      } catch (error) {
+        console.error('❌ Erreur lecture alarme:', error);
+      }
+    },
+    [isPageOpen]
+  );
 
-    isAlarmPlayingRef.current = false;
-    setIsAlarmPlaying(false); // Mettre à jour le contexte
-    console.log("🔇 ARRÊT DE L'ALARME GLOBALE");
-
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-    }
-
-    if (alarmIntervalRef.current) {
-      clearInterval(alarmIntervalRef.current);
-      alarmIntervalRef.current = null;
-    }
-  }, [setIsAlarmPlaying]);
-
-  // Quand la page "Traitement Demandes" est ouverte, arrêter l'alarme et mettre à jour les notifications
   useEffect(() => {
     if (!user?.id || !isPageOpen) return;
 
@@ -93,16 +104,15 @@ const TraitementAlarmManager: React.FC = () => {
     let abortController: AbortController | null = null;
 
     const markNotificationsAsOpened = async () => {
-      // Créer un nouvel AbortController pour cette requête
       abortController = new AbortController();
-      const timeoutId = setTimeout(() => abortController?.abort(), 5000); // Timeout de 5 secondes
+      const timeoutId = setTimeout(() => abortController?.abort(), 5000);
 
       try {
-        console.log(
-          '📄 Page "Traitement Demandes" ouverte - Arrêt alarme et mise à jour notifications'
-        );
-
-        stopAlarmLoop();
+        setBlink(false);
+        if (audioRef.current) {
+          audioRef.current.pause();
+          audioRef.current.currentTime = 0;
+        }
 
         const response = await fetch('/api/notifications/mark-all-read', {
           method: 'POST',
@@ -112,8 +122,6 @@ const TraitementAlarmManager: React.FC = () => {
         });
 
         clearTimeout(timeoutId);
-
-        // Vérifier si le composant est toujours monté
         if (!isMounted) return;
 
         if (response.ok) {
@@ -122,28 +130,14 @@ const TraitementAlarmManager: React.FC = () => {
             console.log(
               `✅ ${data.count || 0} notification(s) mise(s) à jour en "Ouvert"`
             );
-          } catch (parseError) {
-            console.error(
-              '❌ Erreur lors du parsing de la réponse:',
-              parseError
-            );
+          } catch {
+            /* ignore */
           }
-        } else {
-          console.warn(
-            `⚠️ Réponse API non-OK: ${response.status} ${response.statusText}`
-          );
         }
       } catch (error: any) {
         clearTimeout(timeoutId);
-        // Ignorer les erreurs d'abort (timeout)
-        if (error?.name === 'AbortError') {
-          console.warn('⚠️ Requête de marquage annulée (timeout)');
-          return;
-        }
-        console.error(
-          '❌ Erreur mise à jour notifications:',
-          error?.message || error
-        );
+        if (error?.name === 'AbortError') return;
+        console.error('❌ Erreur mise à jour notifications:', error?.message || error);
       } finally {
         abortController = null;
       }
@@ -153,97 +147,64 @@ const TraitementAlarmManager: React.FC = () => {
     return () => {
       clearTimeout(timer);
       isMounted = false;
-      if (abortController) {
-        abortController.abort();
-      }
+      if (abortController) abortController.abort();
     };
-  }, [user?.id, isPageOpen, stopAlarmLoop]);
+  }, [user?.id, isPageOpen, setBlink]);
 
-  // Vérifier périodiquement les notifications "Non Ouvert" (seulement si la page n'est pas ouverte)
   useEffect(() => {
     if (!user?.id) return;
-
-    // Si la page est ouverte, ne pas vérifier
     if (isPageOpen) {
-      stopAlarmLoop();
+      setBlink(false);
       return;
     }
 
     const checkAndPlayAlarm = async () => {
-      // Vérifier à nouveau si la page est maintenant ouverte
       if (router.pathname === '/conge/traitement-demandes') {
-        stopAlarmLoop();
+        setBlink(false);
         return;
       }
 
       try {
-        const userId = Number(user.id); // S'assurer que c'est un nombre
-        console.log(
-          `🔔 AlarmManager: Vérification notifications pour userId=${userId}`
-        );
-
+        const userId = Number(user.id);
         const response = await fetch(`/api/notifications?userId=${userId}`);
-
-        if (!response.ok) {
-          console.error(
-            `❌ AlarmManager: Erreur API pour userId=${userId} - Status: ${response.status}`
-          );
-          return;
-        }
+        if (!response.ok) return;
 
         const data = await response.json();
-        console.log(
-          `📊 AlarmManager: Réponse API reçue pour userId=${userId} - ${data.notifications?.length || 0} notification(s)`
-        );
+        if (!data.success || !data.notifications) return;
 
-        if (data.success && data.notifications) {
-          // Filtrer uniquement les notifications "Non Ouvert" pour cet utilisateur
-          // L'API filtre déjà par userId, mais on double vérifie
-          const nonOuvertNotifications = data.notifications.filter((n: any) => {
-            if (!n.contenu) return false;
-            const contenu = String(n.contenu).trim();
-            // Vérifier aussi que fkUtilisateur correspond (si disponible)
-            const isForUser =
-              !n.fkUtilisateur || Number(n.fkUtilisateur) === Number(user.id);
-            const isNonOuvert =
-              contenu === 'Non Ouvert' ||
-              contenu.includes('Non Ouvert') ||
-              contenu.toLowerCase().includes('non ouvert');
-            return isForUser && isNonOuvert;
-          });
+        const nonOuvertNotifications = data.notifications.filter((n: any) => {
+          if (!n.contenu) return false;
+          const contenu = String(n.contenu).trim();
+          const isForUser =
+            !n.fkUtilisateur || Number(n.fkUtilisateur) === Number(user.id);
+          const isNonOuvert =
+            contenu === 'Non Ouvert' ||
+            contenu.includes('Non Ouvert') ||
+            contenu.toLowerCase().includes('non ouvert');
+          return isForUser && isNonOuvert;
+        });
 
-          const currentCount = nonOuvertNotifications.length;
-          console.log(
-            `🔔 ${currentCount} notification(s) "Non Ouvert" trouvée(s) pour l'utilisateur ${user.id}`
-          );
+        const currentCount = nonOuvertNotifications.length;
 
-          // Afficher un toast si le nombre de notifications a augmenté
-          if (
-            currentCount > lastNotificationCountRef.current &&
-            lastNotificationCountRef.current > 0
-          ) {
-            const newCount = currentCount - lastNotificationCountRef.current;
-            setTimeout(() => {
-              showSuccess(
-                '🔔 Nouveau traitement disponible',
-                `${newCount} nouveau${newCount > 1 ? 'x' : ''} traitement${newCount > 1 ? 's' : ''} à visualiser dans "Traitement Demandes"`
-              );
-            }, 3000);
-          }
-          lastNotificationCountRef.current = currentCount;
+        if (
+          currentCount > lastNotificationCountRef.current &&
+          lastNotificationCountRef.current > 0
+        ) {
+          const newCount = currentCount - lastNotificationCountRef.current;
+          setTimeout(() => {
+            showSuccess(
+              '🔔 Nouveau traitement disponible',
+              `${newCount} nouveau${newCount > 1 ? 'x' : ''} traitement${newCount > 1 ? 's' : ''} à visualiser dans "Traitement Demandes"`
+            );
+          }, 3000);
+        }
+        lastNotificationCountRef.current = currentCount;
 
-          if (currentCount > 0) {
-            if (!isAlarmPlayingRef.current) {
-              console.log(
-                `📞 ${currentCount} notification(s) "Non Ouvert" - DÉMARRAGE ALARME`
-              );
-              startAlarmLoop();
-            }
-          } else {
-            if (isAlarmPlayingRef.current) {
-              stopAlarmLoop();
-            }
-          }
+        if (currentCount > 0) {
+          setBlink(true);
+          await playOneShotForNew(nonOuvertNotifications);
+        } else {
+          setBlink(false);
         }
       } catch (error) {
         console.error('❌ Erreur vérification notifications:', error);
@@ -256,18 +217,16 @@ const TraitementAlarmManager: React.FC = () => {
     return () => {
       clearTimeout(initialTimer);
       clearInterval(checkInterval);
-      stopAlarmLoop();
     };
   }, [
     user?.id,
     isPageOpen,
     router.pathname,
-    startAlarmLoop,
-    stopAlarmLoop,
+    playOneShotForNew,
+    setBlink,
     showSuccess,
   ]);
 
-  // Écouter les événements SSE pour nouvelles notifications
   useEffect(() => {
     if (!user?.id || isPageOpen) return;
 
@@ -283,24 +242,17 @@ const TraitementAlarmManager: React.FC = () => {
         const data = JSON.parse(event.data);
 
         if (data.type === 'NEW') {
-          // Vérifier que la notification est bien pour cet utilisateur
-          // Le SSE envoie déjà uniquement les notifications de l'utilisateur connecté
           if (
             data.item &&
             data.item.contenu &&
             data.item.contenu.includes('Non Ouvert')
           ) {
-            // Vérifier explicitement que fkUtilisateur correspond (si disponible dans data.item)
-            // Le stream.ts filtre déjà par userId, mais on double vérifie
-            if (!isPageOpen && !isAlarmPlayingRef.current) {
-              console.log(
-                '📞 Nouvelle notification "Non Ouvert" pour cet utilisateur - Démarrage alarme'
-              );
-              startAlarmLoop();
+            if (!isPageOpen) {
+              setBlink(true);
+              void playOneShotForNew([data.item]);
             }
 
             if (toastTimer) clearTimeout(toastTimer);
-
             toastTimer = setTimeout(() => {
               if (!isPageOpen) {
                 showSuccess(
@@ -312,9 +264,9 @@ const TraitementAlarmManager: React.FC = () => {
             }, 3000);
           }
         } else if (data.type === 'INIT') {
-          // INIT envoie déjà le count filtré par userId
           const count = data.count || 0;
           if (count > 0 && !isPageOpen) {
+            setBlink(true);
             setTimeout(() => {
               showSuccess(
                 '📋 Traitements en attente',
@@ -336,9 +288,9 @@ const TraitementAlarmManager: React.FC = () => {
       if (toastTimer) clearTimeout(toastTimer);
       eventSource.close();
     };
-  }, [user?.id, isPageOpen, startAlarmLoop, showSuccess]);
+  }, [user?.id, isPageOpen, playOneShotForNew, setBlink, showSuccess]);
 
-  return null; // Ce composant n'affiche rien visuellement
+  return null;
 };
 
 export default TraitementAlarmManager;

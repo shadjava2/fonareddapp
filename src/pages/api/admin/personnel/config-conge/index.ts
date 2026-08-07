@@ -45,6 +45,14 @@ async function getConfigConge(req: NextApiRequest, res: NextApiResponse<Data>) {
   try {
     console.log('🔍 Début de la récupération de la configuration congé...');
 
+    try {
+      await prisma.$executeRawUnsafe(
+        `ALTER TABLE congeconfig ADD COLUMN fkSuperviseurPrincipal BIGINT UNSIGNED NULL`
+      );
+    } catch {
+      /* déjà présent */
+    }
+
     // Récupérer la première configuration (il ne devrait y en avoir qu'une)
     const configConge = await prisma.congeconfig.findFirst({
       orderBy: { id: 'desc' },
@@ -61,6 +69,10 @@ async function getConfigConge(req: NextApiRequest, res: NextApiResponse<Data>) {
       id: configConge.id.toString(),
       nbjourMois: configConge.nbjourMois,
       congenonjustifie: configConge.congenonjustifie,
+      fkSuperviseurPrincipal:
+        (configConge as any).fkSuperviseurPrincipal != null
+          ? String((configConge as any).fkSuperviseurPrincipal)
+          : null,
       datecreate: configConge.datecreate,
       dateupdate: configConge.dateupdate,
       usercreateid: configConge.usercreateid?.toString(),
@@ -91,7 +103,7 @@ async function createConfigConge(
   user: any = null
 ) {
   try {
-    const { nbjourMois, congenonjustifie } = req.body;
+    const { nbjourMois, congenonjustifie, fkSuperviseurPrincipal } = req.body;
 
     if (!nbjourMois || isNaN(parseFloat(nbjourMois))) {
       return res.status(400).json({
@@ -127,6 +139,26 @@ async function createConfigConge(
       nj = parsed;
     }
 
+    let principal: bigint | null | undefined = undefined;
+    if (fkSuperviseurPrincipal !== undefined) {
+      if (
+        fkSuperviseurPrincipal === null ||
+        fkSuperviseurPrincipal === '' ||
+        fkSuperviseurPrincipal === 0
+      ) {
+        principal = null;
+      } else {
+        const p = Number(fkSuperviseurPrincipal);
+        if (isNaN(p) || p <= 0) {
+          return res.status(400).json({
+            success: false,
+            message: 'Superviseur principal invalide',
+          });
+        }
+        principal = BigInt(p);
+      }
+    }
+
     // Vérifier s'il existe déjà une configuration
     const existingConfig = await prisma.congeconfig.findFirst();
 
@@ -138,10 +170,21 @@ async function createConfigConge(
       });
     }
 
+    try {
+      await prisma.$executeRawUnsafe(
+        `ALTER TABLE congeconfig ADD COLUMN fkSuperviseurPrincipal BIGINT UNSIGNED NULL`
+      );
+    } catch {
+      /* déjà présent */
+    }
+
     const configConge = await prisma.congeconfig.create({
       data: {
         nbjourMois: nbjourMoisFloat,
         ...(nj !== null ? { congenonjustifie: nj } : {}),
+        ...(principal !== undefined
+          ? ({ fkSuperviseurPrincipal: principal } as any)
+          : {}),
         usercreateid: user ? parseInt(user.id) : 1,
       },
     });
@@ -152,6 +195,10 @@ async function createConfigConge(
         id: configConge.id.toString(),
         nbjourMois: configConge.nbjourMois,
         congenonjustifie: configConge.congenonjustifie,
+        fkSuperviseurPrincipal:
+          (configConge as any).fkSuperviseurPrincipal != null
+            ? String((configConge as any).fkSuperviseurPrincipal)
+            : null,
         datecreate: configConge.datecreate,
         dateupdate: configConge.dateupdate,
         usercreateid: configConge.usercreateid?.toString(),
@@ -176,7 +223,7 @@ async function updateConfigConge(
   user: any = null
 ) {
   try {
-    const { nbjourMois, congenonjustifie } = req.body;
+    const { nbjourMois, congenonjustifie, fkSuperviseurPrincipal } = req.body;
 
     if (!nbjourMois || isNaN(parseFloat(nbjourMois))) {
       return res.status(400).json({
@@ -212,6 +259,26 @@ async function updateConfigConge(
       nj = parsed;
     }
 
+    let principal: bigint | null | undefined = undefined;
+    if (fkSuperviseurPrincipal !== undefined) {
+      if (
+        fkSuperviseurPrincipal === null ||
+        fkSuperviseurPrincipal === '' ||
+        fkSuperviseurPrincipal === 0
+      ) {
+        principal = null;
+      } else {
+        const p = Number(fkSuperviseurPrincipal);
+        if (isNaN(p) || p <= 0) {
+          return res.status(400).json({
+            success: false,
+            message: 'Superviseur principal invalide',
+          });
+        }
+        principal = BigInt(p);
+      }
+    }
+
     // Récupérer la configuration existante
     const existingConfig = await prisma.congeconfig.findFirst();
 
@@ -223,11 +290,22 @@ async function updateConfigConge(
       });
     }
 
+    try {
+      await prisma.$executeRawUnsafe(
+        `ALTER TABLE congeconfig ADD COLUMN fkSuperviseurPrincipal BIGINT UNSIGNED NULL`
+      );
+    } catch {
+      /* déjà présent */
+    }
+
     const configConge = await prisma.congeconfig.update({
       where: { id: existingConfig.id },
       data: {
         nbjourMois: nbjourMoisFloat,
         ...(nj !== null ? { congenonjustifie: nj } : {}),
+        ...(principal !== undefined
+          ? ({ fkSuperviseurPrincipal: principal } as any)
+          : {}),
         userupdateid: user ? parseInt(user.id) : 1,
       },
     });
@@ -238,6 +316,10 @@ async function updateConfigConge(
         id: configConge.id.toString(),
         nbjourMois: configConge.nbjourMois,
         congenonjustifie: configConge.congenonjustifie,
+        fkSuperviseurPrincipal:
+          (configConge as any).fkSuperviseurPrincipal != null
+            ? String((configConge as any).fkSuperviseurPrincipal)
+            : null,
         datecreate: configConge.datecreate,
         dateupdate: configConge.dateupdate,
         usercreateid: configConge.usercreateid?.toString(),

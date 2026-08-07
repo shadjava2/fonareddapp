@@ -1,4 +1,5 @@
 import { getTokenFromRequest, getUserFromToken } from '@/lib/auth';
+import { notifySuperviseurPrincipalCopy } from '@/lib/conge/superviseur-principal';
 import { prisma } from '@/lib/prisma';
 import { hasAnyPermission, PERMISSIONS } from '@/lib/rbac';
 import { formatPersonDisplayName } from '@/lib/user-display-name';
@@ -221,6 +222,35 @@ export default async function handler(
           return formatted;
         })
       );
+
+      // Compteurs pièces jointes (table additive — ignore si absente)
+      try {
+        const ids = data
+          .map((d: any) => Number(d.id))
+          .filter((n: number) => !Number.isNaN(n) && n > 0);
+        if (ids.length > 0) {
+          const placeholders = ids.map(() => '?').join(',');
+          const counts = await prisma.$queryRawUnsafe<any[]>(
+            `SELECT fkDemande, COUNT(*) AS c
+             FROM congedemande_fichier
+             WHERE fkDemande IN (${placeholders})
+             GROUP BY fkDemande`,
+            ...ids
+          );
+          const map = new Map<number, number>();
+          for (const r of counts || []) {
+            map.set(Number(r.fkDemande), Number(r.c));
+          }
+          for (const d of data as any[]) {
+            d.fichiersCount = map.get(Number(d.id)) || 0;
+          }
+        }
+      } catch {
+        for (const d of data as any[]) {
+          d.fichiersCount = 0;
+        }
+      }
+
       const totalPages = Math.ceil(total / limit);
 
       return res.status(200).json({
@@ -544,6 +574,21 @@ export default async function handler(
 
       const formatted = formatRow(created);
       console.log('📊 Données formatées retournées');
+
+      // Copie email au superviseur principal s'il est distinct (non bloquant)
+      try {
+        await notifySuperviseurPrincipalCopy({
+          demandeId: created.id,
+          idSuperviseurTraitement: idSuperviseur,
+          demandeur: String(demandeur),
+          nbrjour: parseFloat(nbrjour),
+          du: dateDu.toISOString(),
+          au: dateAu.toISOString(),
+          section: section,
+        });
+      } catch (copyErr) {
+        console.warn('Copie superviseur principal:', copyErr);
+      }
 
       return res.status(201).json({
         success: true,
@@ -925,12 +970,59 @@ export default async function handler(
     }
 
     if (req.method === 'DELETE') {
+      const token = getTokenFromRequest(req);
+      const currentUser = token ? await getUserFromToken(token) : null;
+      if (!currentUser) {
+        return res.status(401).json({
+          success: false,
+          message: 'Non authentifié',
+        });
+      }
+      if (
+        !hasAnyPermission(currentUser as any, [
+          PERMISSIONS.CONGE_REQUEST_DELETE,
+          PERMISSIONS.CONGE_REQUEST,
+          PERMISSIONS.MODULE_ADMIN,
+        ])
+      ) {
+        return res.status(403).json({
+          success: false,
+          message: 'Permissions insuffisantes',
+        });
+      }
+
       const id = String(req.query.id || '');
       if (!id) {
         return res.status(400).json({
           success: false,
           message: 'ID requis',
         });
+      }
+
+      const existing = await model.findUnique({
+        where: { id: BigInt(id) },
+      });
+      if (!existing) {
+        return res.status(404).json({
+          success: false,
+          message: 'Demande introuvable',
+        });
+      }
+      if (String(existing.statut || '').toUpperCase() !== 'BROUILLON') {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Seules les demandes au statut Brouillon peuvent être supprimées. Utilisez Annuler sinon.',
+        });
+      }
+
+      try {
+        await prisma.$executeRawUnsafe(
+          `DELETE FROM congedemande_fichier WHERE fkDemande = ?`,
+          Number(id)
+        );
+      } catch {
+        /* table peut ne pas exister encore */
       }
 
       await model.delete({

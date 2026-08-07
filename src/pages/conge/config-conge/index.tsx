@@ -9,6 +9,7 @@ interface ConfigConge {
   id: number;
   nbjourMois: number;
   congenonjustifie?: number | null;
+  fkSuperviseurPrincipal?: number | string | null;
   datecreate: string;
   dateupdate: string;
   usercreateid?: number;
@@ -188,6 +189,16 @@ const ConfigCongePage: React.FC = () => {
                       </span>
                     </div>
                     <div className="flex justify-between">
+                      <span className="text-sm text-gray-600">
+                        Superviseur principal:
+                      </span>
+                      <span className="text-sm font-medium text-gray-900">
+                        {configConge.fkSuperviseurPrincipal
+                          ? `ID ${configConge.fkSuperviseurPrincipal}`
+                          : '—'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
                       <span className="text-sm text-gray-600">Créé le:</span>
                       <span className="text-sm font-medium text-gray-900">
                         {new Date(configConge.datecreate).toLocaleDateString(
@@ -300,6 +311,10 @@ const ConfigCongePage: React.FC = () => {
                   ? {
                       nbjourMois: configConge.nbjourMois,
                       congenonjustifie: configConge.congenonjustifie ?? null,
+                      fkSuperviseurPrincipal:
+                        configConge.fkSuperviseurPrincipal != null
+                          ? Number(configConge.fkSuperviseurPrincipal)
+                          : null,
                     }
                   : undefined
               }
