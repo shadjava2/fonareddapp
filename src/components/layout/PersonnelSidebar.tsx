@@ -1,6 +1,7 @@
 import LogoutConfirmDialog from '@/components/auth/LogoutConfirmDialog';
 import {
   ArrowRightOnRectangleIcon,
+  ArrowsRightLeftIcon,
   ChartBarIcon,
   ClockIcon,
   Cog6ToothIcon,
@@ -52,6 +53,12 @@ const PersonnelSidebar: React.FC = () => {
       href: '/personnel/users',
       icon: UserGroupIcon,
       current: router.pathname === '/personnel/users',
+    },
+    {
+      name: 'Doublons agents (fusion)',
+      href: '/personnel/acs-duplicates',
+      icon: ArrowsRightLeftIcon,
+      current: router.pathname === '/personnel/acs-duplicates',
     },
     {
       name: 'Monitoring',
