@@ -242,28 +242,29 @@ export async function mergeAcsDuplicates(params: {
 
     // 3) Monitoring présence — unique (employee_no, year, month, rule_code)
     try {
-      const actions = await (tx as any).presence_monitoring_action.findMany({
-        where: { employee_no: { in: sources } },
-      });
-      for (const action of actions) {
-        const clash = await (tx as any).presence_monitoring_action.findFirst({
-          where: {
-            employee_no: keep,
-            year: action.year,
-            month: action.month,
-            rule_code: action.rule_code,
-          },
+      const mon = (tx as any).presenceMonitoringAction;
+      if (mon) {
+        const actions = await mon.findMany({
+          where: { employee_no: { in: sources } },
         });
-        if (clash) {
-          await (tx as any).presence_monitoring_action.delete({
-            where: { id: action.id },
+        for (const action of actions) {
+          const clash = await mon.findFirst({
+            where: {
+              employee_no: keep,
+              year: action.year,
+              month: action.month,
+              rule_code: action.rule_code,
+            },
           });
-        } else {
-          await (tx as any).presence_monitoring_action.update({
-            where: { id: action.id },
-            data: { employee_no: keep },
-          });
-          monitoringUpdated += 1;
+          if (clash) {
+            await mon.delete({ where: { id: action.id } });
+          } else {
+            await mon.update({
+              where: { id: action.id },
+              data: { employee_no: keep },
+            });
+            monitoringUpdated += 1;
+          }
         }
       }
     } catch {
